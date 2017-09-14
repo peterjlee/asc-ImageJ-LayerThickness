@@ -3,6 +3,7 @@
 	Inwards or Outwards directions using "In-Line" (ImageJ "Outlines" are inside of binary objects").																					   
 	6/7/2016 Peter J. Lee (NHMFL), simplified 6/13-28/2016, changed table output extension to csv for Excel 2016 compatibility 8/15/2017
 	8/23/2017 Removed a label function that was not working beyond 255 object noticed by Ian Pong and Luc LaLonde at LBNL
+	9/9/2017 Added garbage clean up as suggested by Luc LaLonde at LBNL.
 */
 	saveSettings(); /* To restore settings at the end */
 	snapshot();
@@ -49,12 +50,12 @@
 	lcf=(pixelWidth+pixelHeight)/2; /* ---> add here the side size of 1 pixel in the new calibrated units (e.g. lcf=5, if 1 pixels is 5mm) <--- */
 	print("Original magnification scale factor used = " + lcf + " with units: " + unit);
 	run("Select None");
-	run("Duplicate...", "title=[HoleInLines]"); /* Image title a little confusing at this stage but this is what it will become. */
+	run("Duplicate...", "title=HoleInLines"); /* Image title a little confusing at this stage but this is what it will become. */
 	run("Fill Holes");
 	imageCalculator("XOR", "HoleInLines", titleOuterObjects); /* Generates solid white core on black background */
 	run("Invert");	/* Use invert to make black cores for "in-lines" from outline */
 	run("Outline"); /* HoleInLines should now be black rings on a white background */
-	print("Inner InLine is generated from hole in ring");
+	print("Inner InLine is generated from hole in ring.");
 	selectWindow(titleOuterObjects);
 	run("Select None");
 	run("Duplicate...", "title=OuterInLines");
@@ -206,7 +207,8 @@
 	restoreSettings();
 	reset();
 	setBatchMode("exit & display"); /* exit batch mode */
-	
+	run("Collect Garbage"); 
+	/* End of Macro */
 	/*
 		( 8(|)	( 8(|)	ASC Functions	@@@@@:-)	@@@@@:-)
 	*/
@@ -278,7 +280,7 @@
 		 if(month<10) monthStr = "0" + month;
 		 else monthStr = ""  + month;
 		 if (dayOfMonth<10) dayOfMonth = "0" + dayOfMonth;
-		 dateCodeUS = "_"+monthStr+dayOfMonth+substring(year,2);
+		 dateCodeUS = monthStr + dayOfMonth + substring(year,2);
 		 return dateCodeUS;
 	}
 	function hideResultsAs(deactivatedResults) {
@@ -288,8 +290,10 @@
 		}
 	}
 	function restoreExit(message){ /* clean up before aborting macro then exit */
+		/* 9/9/2017 added Garbage clean up suggested by Luc LaLonde - LBNL */
 		restoreSettings(); /* clean up before exiting */
 		setBatchMode("exit & display"); /* not sure if this does anything useful if exiting gracefully but otherwise harmless */
+		run("Collect Garbage"); 
 		exit(message);
 	}
 	function restoreResultsFrom(deactivatedResults) {
