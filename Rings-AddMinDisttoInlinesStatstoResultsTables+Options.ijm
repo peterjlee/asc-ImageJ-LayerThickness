@@ -124,14 +124,14 @@
 		
 		DZeros = 0;
 		D1px = 0;
-		minDist = newArray(fromXpoints.length);
-		if (fromXpoints.length>=1 && toXpoints.length>=1) { /*  check if ring is broken */	
-			for  (fx=0 ; fx<(fromXpoints.length); fx++) {   
-				showProgress(-fx, fromXpoints.length);
+		minDist = newArray(lengthOf(fromXpoints));
+		if (lengthOf(fromXpoints)>=1 && lengthOf(toXpoints)>=1) { /*  check if ring is broken */	
+			for  (fx=0 ; fx<(lengthOf(fromXpoints)); fx++) {   
+				showProgress(-fx, lengthOf(fromXpoints));
 				X1 = fromXpoints[fx];
 				Y1 = fromYpoints[fx];
 				minDist[fx] = imageWidth+imageHeight; /* just something large enough to be safe */
-				for (j=0 ; j<(toXpoints.length); j++) {
+				for (j=0 ; j<(lengthOf(toXpoints)); j++) {
 					X2 = toXpoints[j];
 					Y2 = toYpoints[j];
 					D = sqrt((X1-X2)*(X1-X2)+(Y1-Y2)*(Y1-Y2));
@@ -151,8 +151,8 @@
 			restoreResultsFrom("Results_Main");
 			
 			Array.getStatistics(minDist, Rmin, Rmax, Rmean, Rstd);
-			setResult("From_Points_"+destAb, i, fromXpoints.length);
-			setResult("To_Points_"+destAb, i, toXpoints.length);	
+			setResult("From_Points_"+destAb, i, lengthOf(fromXpoints));
+			setResult("To_Points_"+destAb, i, lengthOf(toXpoints));	
 			if (lcf==1) { 
 				setResult("MinDist"+destAb, i, Rmin);
 				setResult("MaxDist"+destAb, i, Rmax);
@@ -166,7 +166,7 @@
 				setResult("Dist"+destAb+"_Stdv\(" + unit + "\)", i, lcf*Rstd);
 			}
 			setResult("Dist"+destAb+"_Var\(%\)", i, ((100/Rmean)*Rstd));
-			if (Rmin<=1) setResult("1PxDist\(\%\)"+destAb, i, D1px*(100/fromXpoints.length));
+			if (Rmin<=1) setResult("1PxDist\(\%\)"+destAb, i, D1px*(100/lengthOf(fromXpoints)));
 		} /* close of non-broken ring loop */
 		else { /* if no from or to points (open) . . . */ 
 			if (lcf==1) setResult("MinDist\("+i+"\)"+destAb, 0, "Open");
@@ -174,8 +174,8 @@
 			updateResults();
 			hideResultsAs("Results_Distances");
 			restoreResultsFrom("Results_Main");
-			setResult("From_Points_"+destAb, i, fromXpoints.length);
-			setResult("To_Points_"+destAb, i, toXpoints.length);	
+			setResult("From_Points_"+destAb, i, lengthOf(fromXpoints));
+			setResult("To_Points_"+destAb, i, lengthOf(toXpoints));	
 			if (lcf==1) { 
 				setResult("MinDist"+destAb, i,  "Open");
 				setResult("MaxDist"+destAb, i,  "Open");

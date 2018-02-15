@@ -196,16 +196,16 @@
 		
 		DZeros = 0;
 		D1px = 0;
-		minDist = newArray(fromXpoints.length);
+		minDist = newArray(lengthOf(fromXpoints));
  
-		for  (fx=0 ; fx<(fromXpoints.length); fx++) {
-			showProgress(-fx, fromXpoints.length);
+		for  (fx=0 ; fx<(lengthOf(fromXpoints)); fx++) {
+			showProgress(-fx, lengthOf(fromXpoints));
 			X1 = fromXpoints[fx];
 			Y1 = fromYpoints[fx];
 			minDist[fx] = imageWidth+imageHeight; /* just something large enough to be safe */
 			minToX = toXpoints[0];
 			minToY = toYpoints[0];
-			for (j=0 ; j<(toXpoints.length); j++) {
+			for (j=0 ; j<(lengthOf(toXpoints)); j++) {
 				X2 = toXpoints[j];
 				Y2 = toYpoints[j];
 				D = sqrt((X1-X2)*(X1-X2)+(Y1-Y2)*(Y1-Y2));
@@ -235,8 +235,8 @@
 		restoreResultsFrom("Results_Main");
 		
 		Array.getStatistics(minDist, Rmin, Rmax, Rmean, Rstd);
-		setResult("From_Points_"+destAb, i, fromXpoints.length);
-		setResult("To_Points_"+destAb, i, toXpoints.length);
+		setResult("From_Points_"+destAb, i, lengthOf(fromXpoints));
+		setResult("To_Points_"+destAb, i, lengthOf(toXpoints));
 		if (lcf==1) { 
 			setResult("MinDist" + destAb, i, Rmin);
 			setResult("MaxDist" + destAb, i, Rmax);
@@ -250,8 +250,8 @@
 			setResult("Dist" + destAb + "_Stdv\(" + unit + "\)", i, lcf*Rstd);
 		}
 		setResult("Dist"+destAb+"_Var\(%\)", i, ((100/Rmean)*Rstd));
-		if (Rmin==0) setResult("ZeroDist\(\%\)"+destAb, i, DZeros*(100/fromXpoints.length));
-		if (Rmin<=1) setResult("0-1PxDist\(\%\)"+destAb, i, D1px*(100/fromXpoints.length));
+		if (Rmin==0) setResult("ZeroDist\(\%\)"+destAb, i, DZeros*(100/lengthOf(fromXpoints)));
+		if (Rmin<=1) setResult("0-1PxDist\(\%\)"+destAb, i, D1px*(100/lengthOf(fromXpoints)));
 		updateResults();
 		hideResultsAs("Results_Main");
 	}
