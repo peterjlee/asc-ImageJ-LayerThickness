@@ -5,6 +5,7 @@
 	6/7/2016 Peter J. Lee (NHMFL), simplified 6/13-28/2016, changed table output extension to csv for Excel 2016 compatibility 8/15/2017
 	8/18/2017 Removed a label function that was not working beyond 255 object noticed by Ian Pong and Luc LaLonde at LBNL
 	9/9/2017 Added garbage clean up as suggested by Luc LaLonde at LBNL.
+	v180906 Removed redundant dialog line.
 */
 	saveSettings(); /* To restore settings at the end */
 	snapshot();
@@ -29,13 +30,13 @@
 		if(activeImageIs=="neither") activeImageIs = "inner";
 		else activeImageIs = "neither";
 	}			
-	Dialog.create("Macro Options");
+	Dialog.create("Options for Min-Dist_Solid_Objects_Edge-to-Edge_Stats_Table_and_Add_to_Results macro");
 	Dialog.addCheckbox("Inwards \(otherwise Outwards\)", true);
 	Dialog.addMessage("This macro uses two images as the sources inner and outer objects for the\ndistance measurements. It will try and guess if you have an \"inner\" or \"outer\"\nobjects image open for analysis. The active image is:\n"+titleActiveImage+" and is indentified as:\n   \n______________ "+activeImageIs+"\n \n");
-	if (activeImageIs=="neither")	Dialog.addRadioButtonGroup("Is active image \"inner\" or \"outer\"?", newArray("inner", "outer", "neither"), 1,3,"outer");
+	if (activeImageIs=="neither")
+		Dialog.addRadioButtonGroup("Is active image \"inner\" or \"outer\"?", newArray("inner", "outer", "neither"), 1,3,"outer");
 	Dialog.addNumber("Number of origin pixels to skip", 0);
-	Dialog.addMessage("Skipping origin pixels can greatly speed up this macro for large images.\nTo retain resolution, only the \"from\" x and y pixels will be advanced\nwhereas the \"to\" pixels will be retained for accuracy.\nNote: Both x and y are advanced so a setting of 1 results in 1/4 points.\n \n");
-	if (activeImageIs=="neither")	Dialog.addRadioButtonGroup("Is active image \"inner\" or \"outer\"?", newArray("inner", "outer", "neither"), 1,3,"outer");
+	Dialog.addMessage("Skipping origin pixels can greatly speed up this macro for large images.\nTo retain resolution, only the \"from\" x and y pixels will be advanced\nwhereas the \"to\" pixels will be retained for accuracy.\nNote: Both x and y are advanced so a setting of 1 results in 1/4 points.");
 	Dialog.addCheckbox("Do you want to include all x and y coordinates in the Distance Table?", true);
 	Dialog.addMessage("If you see a Java error during the run this can be fixed by inserting a\ndelay before table updating of 50-200 milliseconds.");
 	Dialog.addNumber("Table update delay \(ms\)", 150);
@@ -88,10 +89,9 @@
 		}
 		else { 		/* Ask for a file to be imported */
 			print("No \"_inner\" - \"_outer\" filename match found");
-			fileName = File.openDialog("Select an inner reference \(white\) objects");
+			fileName = File.openDialog("Select an inner reference image of solid objects");
 			open(fileName);
 			titleInnerObjects = getTitle();
-			 
 			print("Image selected for inner Outline: " + titleInnerObjects);
 		}
 	}
@@ -118,7 +118,7 @@
 	binaryCheck(titleInnerObjects);
 	binaryCheck(titleOuterObjects); /* See functions: Checks to see if images are in the correct format */
 	selectWindow(titleOuterObjects);
-	checkForRoiManager();
+	ROIs = checkForRoiManager();
 	setBatchMode(true); /* Turn batch mode on */
 	start = getTime(); /* Start timer after last requester for debugging. */
 	
@@ -134,9 +134,9 @@
 	run("Fill Holes");
 	run("Outline"); /* OuterObjectsInLines should now be black rings on a white background */
 	print("Outer InLine has been generated from hole-filled objects");
-	
-	for (i=0 ; i<roiManager("count"); i++) {
-		showStatus("Looping over object " + i + ", " + (roiManager("count")-i) + " more to go");
+	for (i=0 ; i<ROIs; i++) {
+		showProgress(-i, ROIs);
+		showStatus("Looping over object " + i + ", " + (ROIs-i) + " more to go");
 		selectWindow("InnerObjectsInLines");
 		run("Duplicate...", "title=InnerObjectInLine");
 		roiManager("select", i);
@@ -199,7 +199,7 @@
 		minDist = newArray(lengthOf(fromXpoints));
  
 		for  (fx=0 ; fx<(lengthOf(fromXpoints)); fx++) {
-			showProgress(-fx, lengthOf(fromXpoints));
+			showProgress(fx, lengthOf(fromXpoints));
 			X1 = fromXpoints[fx];
 			Y1 = fromYpoints[fx];
 			minDist[fx] = imageWidth+imageHeight; /* just something large enough to be safe */
@@ -266,7 +266,7 @@
 	closeImageByTitle("OuterObjectsInLines");
 	roiManager("deselect");
 	
-	print(roiManager("count") + " objects in = " + (getTime()-start)/1000 + "s");
+	print(ROIs + " objects in = " + (getTime()-start)/1000 + "s");
 	print("-----\n\n");
 	
 	saveExcelFile(dirActiveImage, titleActiveImage, "Results_Distances"); /* function saveExcelFile(outputPath, outputName, outputResultsTable) */
