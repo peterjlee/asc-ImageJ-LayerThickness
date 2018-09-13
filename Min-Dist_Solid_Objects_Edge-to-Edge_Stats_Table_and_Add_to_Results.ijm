@@ -9,6 +9,7 @@
 	v180907 Updated ASC functions to latest versions. Added checks for outlier areas and isolated pixels.
 	v180910 Very minor code cleanup.
 	v180911-v180912 Major reworking to leverage use of new Table functions resulting in a 93%  reduction in run time.
+	v180913 Added option to output coordinates and distances in table suitable for the line color coder macro.
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
 	saveSettings(); /* To restore settings at the end */
@@ -41,7 +42,8 @@
 		Dialog.addRadioButtonGroup("Is the active image the \"inner\" or the \"outer\"?", newArray("inner", "outer", "neither"), 1,3,"outer");
 	Dialog.addMessage("Skipping origin pixels can greatly speed up this macro for very large images.\nTo retain resolution, only the \"from\" x and y pixels will be advanced\nwhereas the \"to\" pixels will be retained for accuracy.\nNote: Both x and y are advanced so a setting of 1 results in 1/4 points.");
 	Dialog.addNumber("Number of origin pixels to skip", 0);
-		Dialog.addCheckbox("Do you want to include all x and y coordinates in the Distance Table?", true);
+	Dialog.addCheckbox("Do you want to include all x and y coordinates in the Distance Table?", true);
+	Dialog.addCheckbox("Do you want to also output all minimum distances and coordinates in one 5 column table for use in the line color coder macro?", false);
 		
 	Dialog.show();
 	direction = Dialog.getCheckbox(); /* if (direction==true) distance direction will be inwards */
@@ -59,6 +61,7 @@
 	}
 	pxAdv = Dialog.getNumber()+1; /* add 1 so that it can be used directly in the loop incrementals */
 	saveCoords = Dialog.getCheckbox();
+	colorCoderTable = Dialog.getCheckbox();
 			
 	print("This macro adds Minimum Distances \(Inlines\) analysis to the Results Table.");
 	print("Macro: " + getInfo("macro.filepath"));
@@ -150,7 +153,7 @@
 	loopStart = getTime();
 	startRow = 0;
 	for (i=0 ; i<ROIs; i++) {
-		showProgress(-i, ROIs);
+		// showProgress(-i, ROIs);
 		selectWindow("InnerObjectsInLines");
 		run("Duplicate...", "title=InnerObjectInLine");
 		roiManager("select", i);
@@ -285,7 +288,6 @@
 	closeImageByTitle("InnerObjectsInLines");
 	closeImageByTitle("OuterObjectsInLines");
 	roiManager("deselect");
-	updateResults();
 	Table.create("Results_Distances");
 	startRow = 0;
 	endRow = 0;
@@ -297,17 +299,28 @@
 			Table.setColumn("To_X\("+i+"\)", Array.slice(toAllXpoints,startRow,endRow));
 			Table.setColumn("To_Y\("+i+"\)", Array.slice(toAllYpoints,startRow,endRow));
 		}
-		if (lcf==1) { Table.setColumn("MinDist\("+i+"\)"+destAb, Array.slice(allMinDists,startRow,endRow))};
+		if (lcf==1) { Table.setColumn("MinDist\(" + i + "\)" + destAb, Array.slice(allMinDists,startRow,endRow));}
 		else { Table.setColumn("MinDist\("+i+"\)"+destAb+"\("+unit+"\)", Array.slice(allMinDists,startRow,endRow));}
 		startRow += fromCoords[i];
 	}
 	Table.update;
+	if(colorCoderTable) {
+		Table.create("All_Min_Distances");
+		Table.setColumn("From_X", fromAllXpoints);
+		Table.setColumn("From_Y", fromAllYpoints);
+		Table.setColumn("To_X", toAllXpoints);
+		Table.setColumn("To_Y", toAllYpoints);
+		if (lcf==1) { Table.setColumn("MinDist", allMinDists);}
+		else { Table.setColumn("MinDist\("+unit+"\)", allMinDists);}
+		Table.update;
+	}		
 	print(ROIs + " objects in = " + (getTime()-start)/1000 + "s");
 	print("-----\n\n");
 	excelName =  substring(titleActiveImage, 0, lastIndexOf(titleActiveImage, ".")) + "_" + destAb;
 	if (pxAdv>1) excelName += "_skip"+(pxAdv-1)+"pxls";
 	saveExcelFile(dirActiveImage, excelName, "Results_Distances"); /* function saveExcelFile(outputPath, outputName, outputResultsTable) */
 	saveExcelFile(dirActiveImage, excelName, "Results");
+	if(colorCoderTable) saveExcelFile(dirActiveImage, excelName, "All_Min_Distances");
 	restoreSettings();
 	reset();
 	setBatchMode("exit & display"); /* exit batch mode */
@@ -325,8 +338,7 @@
         if (index<1) index = 1;
         if (index>n-1) index = n-1;
         return substring(bar2, 0, index) + substring(bar1, index+1, n);
-  }
-	
+	}
 	/*
 		( 8(|)	( 8(|)	ASC Functions	@@@@@:-)	@@@@@:-)
 	*/
