@@ -36,7 +36,8 @@
 		else activeImageIs = "neither";
 	}			
 	Dialog.create("Options for Min-Dist_Solid_Objects_Edge-to-Edge_Stats_Table_and_Add_to_Results macro");
-	Dialog.addCheckbox("Inwards \(otherwise Outwards\)", true);
+	Dialog.addRadioButtonGroup("Direction of minimum distance search:", newArray("Inwards", "Outwards"),1,2,"Outwards");
+	// Dialog.addCheckbox("Outwards \(otherwise Inwards\)", true);
 	Dialog.addMessage("This macro uses two images as the sources inner and outer objects for the\ndistance measurements. It will try and guess if you have an \"inner\" or \"outer\"\nobjects image open for analysis. The active image is:\n  \n"+titleActiveImage+"\n  \nand is identified as:\n   \n______________ "+activeImageIs+"\n");
 	if (activeImageIs=="neither")
 		Dialog.addRadioButtonGroup("Is the active image the \"inner\" or the \"outer\"?", newArray("inner", "outer", "neither"), 1,3,"outer");
@@ -46,7 +47,7 @@
 	Dialog.addCheckbox("Do you want to also output all minimum distances and coordinates in one 5 column table for use in the line color coder macro?", false);
 		
 	Dialog.show();
-	direction = Dialog.getCheckbox(); /* if (direction==true) distance direction will be inwards */
+	direction = Dialog.getRadioButton();
 	if (activeImageIs=="neither") {
 		activeImageIs = Dialog.getRadioButton();
 		if (activeImageIs=="neither") {
@@ -65,8 +66,8 @@
 			
 	print("This macro adds Minimum Distances \(Inlines\) analysis to the Results Table.");
 	print("Macro: " + getInfo("macro.filepath"));
-	if (direction==true) destAb = "Inw";
-	else  destAb = "Outw";
+	if (direction=="Outwards") destAb = "Outw";
+	else  destAb = "Inw";
 	print("Distance direction selected to be "+destAb+"ards, advancing " + pxAdv + " \"from\" pixels in x and y directions.");
 	
 	print("Original image: " + titleActiveImage);	 
@@ -141,7 +142,7 @@
 	print("Outer InLine has been generated from hole-filled objects");
 	progressWindowTitle = "[Progress]";
 	run("Text Window...", "name="+ progressWindowTitle +" width=25 height=2 monospaced");
-	eval("script","f = WindowManager.getWindow('Progress'); f.setLocation(50,20); f.setSize(400,100);"); 
+	eval("script","f = WindowManager.getWindow('Progress'); f.setLocation(50,20); f.setSize(550,150);"); 
 	fromCoords = newArray(ROIs);
 	if (saveCoords) {
 		fromAllXpoints = newArray(0);
@@ -151,6 +152,7 @@
 	}
 	allMinDists = newArray(0);
 	loopStart = getTime();
+	progressUpdateIntervalCount=0;
 	startRow = 0;
 	for (i=0 ; i<ROIs; i++) {
 		// showProgress(-i, ROIs);
@@ -173,7 +175,7 @@
 		RxEnd = Rx+Rwidth;
 		RyEnd = Ry+Rheight;
 		Label = i+1;
-		if (!direction) /* switch windows for Outward */
+		if (direction=="Outwards") /* switch windows for Outward */
 			selectWindow("InnerObjectInLine");
 		fromCoords[i] = 0; /* Reset row counter */
 		for (x=Rx; x<RxEnd; x+=pxAdv){ /* Sampling of source data points set by pxAdv */
@@ -189,7 +191,7 @@
 		fromYpoints = Array.trim(fromYpoints, fromCoords[i]);
 		if (fromCoords[i]==0 || lengthOf(fromYpoints)==0) restoreExit("Issue with ROI#" + i + ": no From points");
 		
-		if (!direction) /* switch windows for Outward */
+		if (direction=="Outwards") /* switch windows for Outward */
 			selectWindow("OuterObjectInLine");
 		else selectWindow("InnerObjectInLine");
 			
@@ -266,16 +268,25 @@
 		if (D1px>0) D1pxPC = D1px*(100/fromCoords[i]);
 		else D1pxPC = 0;
 		setResult("0-1PxDist\(\%\)"+destAb, i, D1pxPC);
-		// updateResults();
 		loopTime = getTime();
-		timeTaken = loopTime-loopStart;
-		timeLeft = (ROIs-(i+1)) * timeTaken/(i+1);
-		timeLeftM = floor(timeLeft/60000);
-		timeLeftS = (timeLeft-timeLeftM*60000)/1000;
-		totalTime = timeTaken + timeLeft;
-		print(progressWindowTitle, "\\Update:"+timeLeftM+" m " +timeLeftS+" s to completion ("+(timeTaken*100)/totalTime+"%)\n"+getBar(timeTaken, totalTime));
+		if(i==0) loopReporting = round(1000/loopTime);  /* set to update only ~ once per second */
+		if(progressUpdateIntervalCount==0) {
+			timeTaken = loopTime-loopStart;
+			timeLeft = (ROIs-(i+1)) * timeTaken/(i+1);
+			timeLeftM = floor(timeLeft/60000);
+			timeLeftS = (timeLeft-timeLeftM*60000)/1000;
+			totalTime = timeTaken + timeLeft;
+			maxFactor = 100000000/IJ.maxMemory();
+			mem = IJ.currentMemory();
+			mem /=1000000;
+			memPC = mem*maxFactor;
+			if (memPC>90) restoreExit("Memory use has exceeded 90% of maximum memory");
+			print(progressWindowTitle, "\\Update:"+timeLeftM+" m " +timeLeftS+" s to completion ("+(timeTaken*100)/totalTime+"%)\n"+getBar(timeTaken, totalTime)+"\n Current Memory Usage: "  + memPC + "% of MaxMemory: ");
+		}
+		progressUpdateIntervalCount +=1;
+		if (progressUpdateIntervalCount>loopReporting) progressUpdateIntervalCount = 0;
 		startRow = fromCoords[i];
-		showStatus("Looping over object " + i + " complete, " + (ROIs-i) + " more to go");
+		// showStatus("Looping over object " + i + " complete, " + (ROIs-i) + " more to go");
 	}
 	updateResults();
 	eval("script","f = WindowManager.getWindow('Progress'); f.close();"); 
