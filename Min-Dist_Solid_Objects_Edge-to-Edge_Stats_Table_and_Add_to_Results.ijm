@@ -10,11 +10,13 @@
 	v180910 Very minor code cleanup.
 	v180911-v180912 Major reworking to leverage use of new Table functions resulting in a 93%  reduction in run time.
 	v180913 Added option to output coordinates and distances in table suitable for the line color coder macro.
+	v180924-5 Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
+	run("Collect Garbage");
 	saveSettings(); /* To restore settings at the end */
 	snapshot();
-	
+		
 	/*   ('.')  ('.')   Black objects on white background settings   ('.')   ('.')   */	
 	/* Set options for black objects on white background as this works better for publications */
 	run("Options...", "iterations=1 white count=1"); /* Set the background to white */
@@ -25,18 +27,22 @@
 		http://imagejdocu.tudor.lu/doku.php?id=faq:technical:how_do_i_set_up_imagej_to_deal_with_white_particles_on_a_black_background_by_default */
 	cleanUp(); /* function to cleanup old windows (I hope you did not want them). Run before cleanup.*/
 	/* ROI manager check must be after inner/outer check */
+	maxMemFactor = 100000000/IJ.maxMemory();
+	mem = IJ.currentMemory();
+	mem /=1000000;
+	startMemPC = mem*maxMemFactor;
 	titleActiveImage = getTitle();
 	dirActiveImage = getDirectory("image");
 	activeImageIs = "neither";
-	if((indexOf(titleActiveImage, "inner"))>= 0) {
+	if((indexOf(titleActiveImage, "nner"))>= 0) {
 		activeImageIs = "inner";
 	}
-	if((indexOf(titleActiveImage, "outer"))>= 0) {
+	if((indexOf(titleActiveImage, "uter"))>= 0) {
 		if(activeImageIs=="neither") activeImageIs = "outer";
 		else activeImageIs = "neither";
 	}			
 	Dialog.create("Options for Min-Dist_Solid_Objects_Edge-to-Edge_Stats_Table_and_Add_to_Results macro");
-	Dialog.addRadioButtonGroup("Direction of minimum distance search:", newArray("Inwards", "Outwards"),1,2,"Outwards");
+	Dialog.addRadioButtonGroup("Direction of minimum distance search:", newArray("Inwards", "Outwards", "Both"),1,2,"Outwards");
 	// Dialog.addCheckbox("Outwards \(otherwise Inwards\)", true);
 	Dialog.addMessage("This macro uses two images as the sources inner and outer objects for the\ndistance measurements. It will try and guess if you have an \"inner\" or \"outer\"\nobjects image open for analysis. The active image is:\n  \n"+titleActiveImage+"\n  \nand is identified as:\n   \n______________ "+activeImageIs+"\n");
 	if (activeImageIs=="neither")
@@ -53,7 +59,7 @@
 		if (activeImageIs=="neither") {
 			Dialog.create("Do you want to open a different file or exit?");
 			Dialog.addCheckbox("Open New File?", true);
-			Dialog.addRadioButtonGroup("Is new image \"inner\" or \"outer\"?", newArray("inner", "outer"), 1,3,"outer");
+			Dialog.addRadioButtonGroup("Is the new image \"inner\" or \"outer\"?", newArray("inner", "outer"), 1,3,"outer");
 			Dialog.show();
 			if((Dialog.getCheckbox())==1) open(); /* if (analyzeNow==true) ImageJ analyze particles will be performed, otherwise exit */
 			else restoreExit();
@@ -66,9 +72,15 @@
 			
 	print("This macro adds Minimum Distances \(Inlines\) analysis to the Results Table.");
 	print("Macro: " + getInfo("macro.filepath"));
-	if (direction=="Outwards") destAb = "Outw";
-	else  destAb = "Inw";
-	print("Distance direction selected to be "+destAb+"ards, advancing " + pxAdv + " \"from\" pixels in x and y directions.");
+	if (direction=="Outwards" || direction=="Both"){
+		destAb = "Outw";
+		if (direction=="Outwards") destName = "Outw";
+		else destName = "Outw&Inw";
+	} else {
+		destAb = "Inw";
+		destName = "Inw";
+	}
+	print("Distance direction selected to be "+destName+", advancing " + pxAdv + " \"from\" pixels in x and y directions.");
 	
 	print("Original image: " + titleActiveImage);	 
 	imageWidth = getWidth();
@@ -78,26 +90,28 @@
 	print("Original magnification scale factor used = " + lcf + " with units: " + unit);
 	/* Guess files to be used from active image name */
 	titleActiveImage = getTitle();
-	dirActiveImage = getDirectory("image");
-	titleSwitch = replace(titleActiveImage, "_inner", "_outer");  /* Check if active image is inner */
-	if (titleActiveImage==titleSwitch || activeImageIs=="outer") { /* There was no "_inner" in the active inner name, so the active window is assumed to be "Outer" */
+	dirActiveImage = getInfo("image.directory");
+	lastActiveInner = lastIndexOf(titleActiveImage, "_inner");
+	lastActiveOuter = lastIndexOf(titleActiveImage, "_outer");
+	if (lastActiveInner>=0) titleSwitch = substring(titleActiveImage,0,lastActiveInner)+"_outer";
+	else if (lastActiveOuter>=0) titleSwitch = substring(titleActiveImage,0,lastActiveOuter)+"_inner";
+	else titleSwitch = "unknown";
+	if (lastActiveInner<0 || activeImageIs=="outer") { /* There was no "_inner" in the active inner name, so the active window is assumed to be "Outer" */
 		titleOuterObjects = titleActiveImage;
 		print("Active image is assumed to be outer Outline: " + titleOuterObjects);
-		titleInnerObjects = replace(titleOuterObjects, "_outer", "_inner");
-		if (titleInnerObjects!=titleOuterObjects) {
-			pathInnerGuess = dirActiveImage + titleInnerObjects;
-			if (File.exists(pathInnerGuess)==1) {
-				open(pathInnerGuess);
-			  
-				print("Image auto-loaded for inner Outline: " + titleInnerObjects);
-			}
+		titleInnerObjects = titleSwitch;
+		pathInnerGuess = dirActiveImage + titleInnerObjects;
+		if (File.exists(pathInnerGuess)==true) {
+			print(File.exists(pathInnerGuess));
+			open(pathInnerGuess);
+			print("Image auto-loaded for inner Outline: " + titleInnerObjects);
 		}
-		else { 		/* Ask for a file to be imported */
-			print("No \"_inner\" - \"_outer\" filename match found");
-			fileName = File.openDialog("Select an inner reference image of solid objects");
+		else { /* Ask for a file to be imported */
+			print("No \"_outer\" - \"_inner\" filename match found");
+			fileName = File.openDialog("Select an inner reference \(white\) objects");
 			open(fileName);
-			titleInnerObjects = getTitle();
-			print("Image selected for inner Outline: " + titleInnerObjects);
+			titleInnerObjects = getTitle();	 
+			print("Image selected for Inner Outline: " + titleInnerObjects);
 		}
 	}
 	else {  /* there was "_inner" in the active image name or inner was specified so active is assumed to "Outer" */
@@ -105,18 +119,16 @@
 		print("Active image is assumed to be inner Outline: " + titleInnerObjects);
 		/* guess outer filename (_inner replaced with _outer) */
 		pathOuterGuess = dirActiveImage + titleSwitch;
-		if (File.exists(pathOuterGuess)==1) {
+		if (File.exists(pathOuterGuess)==true) {
 			titleOuterObjects = titleSwitch;
-			open(pathOuterGuess);
-			 
+			open(pathOuterGuess);	 
 			print("Image auto-loaded for outer Outline: " + titleOuterObjects);
-			}
+		}
 		else { /* Ask for a file to be imported */
 			print("No \"_outer\" - \"_inner\" filename match found");
 			fileName = File.openDialog("Select an inner reference \(white\) objects");
 			open(fileName);
-			titleOuterObjects = getTitle();
-			 
+			titleOuterObjects = getTitle();	 
 			print("Image selected for outer Outline: " + titleOuterObjects);
 		}
 	}
@@ -144,15 +156,19 @@
 	run("Text Window...", "name="+ progressWindowTitle +" width=25 height=2 monospaced");
 	eval("script","f = WindowManager.getWindow('Progress'); f.setLocation(50,20); f.setSize(550,150);"); 
 	fromCoords = newArray(ROIs);
+	toCoords = newArray(ROIs);
 	if (saveCoords) {
 		fromAllXpoints = newArray(0);
 		fromAllYpoints = newArray(0);
 		toAllXpoints = newArray(0);
 		toAllYpoints = newArray(0);
+		allDirections = newArray(0);
 	}
 	allMinDists = newArray(0);
+	allDirections = newArray();
 	loopStart = getTime();
-	progressUpdateIntervalCount=0;
+	progressUpdateIntervalCount = 0;
+	memoryFlushIntervalCount = 0;
 	startRow = 0;
 	for (i=0 ; i<ROIs; i++) {
 		// showProgress(-i, ROIs);
@@ -167,48 +183,38 @@
 		run("Clear Outside"); /* Now only the ROI-contained object should be black */
 		Roi.getBounds(Rx, Ry, Rwidth, Rheight);
 		if (Rwidth==1 && Rheight==1) getBoolean("ROI #" + i + " is an isolated pixel: Do you want to continue?");
-		fromXpoints = newArray(Rwidth*Rheight);
-		fromYpoints = newArray(Rwidth*Rheight);
-		toXpoints = newArray(Rwidth*Rheight);
-		toYpoints = newArray(Rwidth*Rheight);
-		minDists = newArray(Rwidth*Rheight);
+		fromXpoints = newArray(0);
+		fromYpoints = newArray(0);
+		toXpoints = newArray(0);
+		toYpoints = newArray(0);
 		RxEnd = Rx+Rwidth;
 		RyEnd = Ry+Rheight;
 		Label = i+1;
-		if (direction=="Outwards") /* switch windows for Outward */
+		if (direction=="Outwards" || direction=="Both") /* switch windows for Outward */
 			selectWindow("InnerObjectInLine");
-		fromCoords[i] = 0; /* Reset row counter */
 		for (x=Rx; x<RxEnd; x+=pxAdv){ /* Sampling of source data points set by pxAdv */
 			for (y=Ry; y<RyEnd; y+=pxAdv){ /* Sampling of source data points set by pxAdv */
 				if((getPixel(x, y))==0) { /* Add only black pixels to array. */
-					fromXpoints[fromCoords[i]] = x;
-					fromYpoints[fromCoords[i]] = y;
-					fromCoords[i] += 1;
+					fromXpoints = Array.concat(fromXpoints,x);
+					fromYpoints = Array.concat(fromYpoints,y);
 				}
 			}
 		}
-		fromXpoints = Array.trim(fromXpoints, fromCoords[i]);
-		fromYpoints = Array.trim(fromYpoints, fromCoords[i]);
-		if (fromCoords[i]==0 || lengthOf(fromYpoints)==0) restoreExit("Issue with ROI#" + i + ": no From points");
-		
-		if (direction=="Outwards") /* switch windows for Outward */
+		fromCoords[i] = lengthOf(fromXpoints);
+		if (fromCoords[i]==0) restoreExit("Issue with ROI#" + i + ": no From points");
+		if (direction=="Outwards" || direction=="Both") /* switch windows for Outward */
 			selectWindow("OuterObjectInLine");
 		else selectWindow("InnerObjectInLine");
-			
-		toCoords = 0; /* Reset row counter */
-	
 		for (x=Rx; x<RxEnd; x++){
 			for (y=Ry; y<RyEnd; y++){
 				if((getPixel(x, y))==0) { /* Add only black pixels to array. */
-					toXpoints[toCoords] = x;
-					toYpoints[toCoords] = y;
-					toCoords += 1;
+					toXpoints = Array.concat(toXpoints,x);
+					toYpoints = Array.concat(toYpoints,y);
 				}
 			}
 		}
-		toXpoints = Array.trim(toXpoints, toCoords);
-		toYpoints = Array.trim(toYpoints, toCoords);
-		if (toCoords==0) restoreExit("Issue with ROI#" + i + ": no \"To\" points");
+		toCoords[i] = lengthOf(toXpoints);
+		if (toCoords[i]==0) restoreExit("Issue with ROI#" + i + ": no \"To\" points");
 		closeImageByTitle("InnerObjectInLine"); /* Reset InLine for each object */
 		closeImageByTitle("OuterObjectInLine"); /* Reset InLine for each object */
 		
@@ -218,26 +224,25 @@
 		minToX = newArray(fromCoords[i]);
 		minToY = newArray(fromCoords[i]);
  
-		for  (fx=0 ; fx<(fromCoords[i]); fx++) {
-			showProgress(fx, fromCoords[i]);
-			X1 = fromXpoints[fx];
-			Y1 = fromYpoints[fx];
-			minDist[fx] = imageWidth+imageHeight; /* just something large enough to be safe */
-			minToX[fx] = toXpoints[0];
-			minToY[fx] = toYpoints[0];
-			for (j=0 ; j<toCoords; j++) {
-				X2 = toXpoints[j];
-				Y2 = toYpoints[j];
+		for  (f=0 ; f<(fromCoords[i]); f++) {
+			showProgress(f, fromCoords[i]);
+			X1 = fromXpoints[f];
+			Y1 = fromYpoints[f];
+			minDist[f] = imageWidth+imageHeight; /* just something large enough to be safe */
+			for (t=0 ; t<toCoords[i]; t++) {
+				X2 = toXpoints[t];
+				Y2 = toYpoints[t];
 				D = sqrt((X1-X2)*(X1-X2)+(Y1-Y2)*(Y1-Y2));
-				if (minDist[fx]>D) {
-					minDist[fx] = D;  /* using this loop is very slightly faster than using array statistics */
-					minToX[fx] = X2;
-					minToY[fx] = Y2;
+				if (minDist[f]>D) {
+					minDist[f] = D;  /* using this loop is very slightly faster than using array statistics */
+					minIndex = t;
 				}
 			}
-			if (minDist[fx]==0) DZeros += 1; /* Dmin is in pixels */
-			if (minDist[fx]<=1) D1px += 1;
-			if (lcf!=1) minDist[fx] *= lcf;
+			minToX[f] = toXpoints[minIndex];
+			minToY[f] = toYpoints[minIndex];
+			if (minDist[f]==0) DZeros += 1; /* Dmin is in pixels */
+			if (minDist[f]<=1) D1px += 1;
+			if (lcf!=1) minDist[f] *= lcf;
 		}
 		allMinDists = Array.concat(allMinDists, minDist);
 		if (saveCoords==1) {
@@ -248,7 +253,7 @@
 		}
 		Array.getStatistics(minDist, Rmin, Rmax, Rmean, Rstd);	
 		setResult("From_Points_"+destAb, i, fromCoords[i]);
-		setResult("To_Points_"+destAb, i, toCoords);
+		setResult("To_Points_"+destAb, i, toCoords[i]);
 		if (lcf==1) { 
 			setResult("MinDist" + destAb, i, Rmin);
 			setResult("MaxDist" + destAb, i, Rmax);
@@ -268,25 +273,105 @@
 		if (D1px>0) D1pxPC = D1px*(100/fromCoords[i]);
 		else D1pxPC = 0;
 		setResult("0-1PxDist\(\%\)"+destAb, i, D1pxPC);
-		loopTime = getTime();
-		if(i==0) loopReporting = round(1000/loopTime);  /* set to update only ~ once per second */
+		
+		/* Now add the reverse direction results if "both" directions requested */
+		if (direction=="Both") {
+			DZeros = 0;
+			D1px = 0;
+			minDist = newArray(toCoords[i]);
+			minFromX = newArray(toCoords[i]);
+			minFromY = newArray(toCoords[i]);
+	 
+			for  (t=0 ; t<(toCoords[i]); t++) {
+				showProgress(t, toCoords[i]);
+				X1 = toXpoints[t];
+				Y1 = toYpoints[t];
+				minDist[t] = imageWidth+imageHeight; /* just something large enough to be safe */
+				for (f=0; f<fromCoords[i]; f++) {
+					X2 = fromXpoints[f];
+					Y2 = fromYpoints[f];
+					D = sqrt((X1-X2)*(X1-X2)+(Y1-Y2)*(Y1-Y2));
+					if (minDist[t]>D) {
+						minDist[t] = D;  /* using this loop is very slightly faster than using array statistics */
+						minIndex = f;
+					}
+				}
+				minFromX[t] = fromXpoints[minIndex];
+				minFromY[t] = fromYpoints[minIndex];
+				if (minDist[t]==0) DZeros += 1; /* Dmin is in pixels */
+				if (minDist[t]<=1) D1px += 1;
+				if (lcf!=1) minDist[t] *= lcf;
+			}
+			allMinDists = Array.concat(allMinDists, minDist);
+			if (saveCoords==1) {
+				toAllXpoints = Array.concat(toAllXpoints, toXpoints);
+				toAllYpoints = Array.concat(toAllYpoints, toYpoints);
+				fromAllXpoints = Array.concat(fromAllXpoints, minFromX);
+				fromAllYpoints = Array.concat(fromAllYpoints, minFromY);
+			}
+			Array.getStatistics(minDist, Rmin, Rmax, Rmean, Rstd);	
+			setResult("From_Points_inw", i, toCoords[i]);
+			setResult("To_Points_inw", i, fromCoords[i]);
+			if (lcf==1) { 
+				setResult("MinDist_inw", i, Rmin);
+				setResult("MaxDist_inw", i, Rmax);
+				setResult("Dist_inw" + "_Mean", i, Rmean);
+				setResult("Dist_inw" + "_Stdv", i, Rstd);
+			}
+			else {
+				setResult("MinDist_inw" + "\(" + unit + "\)", i, Rmin);
+				setResult("MaxDist_inw" + "\(" + unit + "\)", i, Rmax);
+				setResult("Dist_inw" + "_Mean\(" + unit + "\)", i, Rmean);
+				setResult("Dist_inw" + "_Stdv\(" + unit + "\)", i, Rstd);
+			}
+			setResult("Dist_inw_Var\(%\)", i, ((100/Rmean)*Rstd));
+			if (DZeros>0) DZeroPC = DZeros*(100/toCoords[i]);
+			else DZeroPC = 0;
+			setResult("ZeroDist\(\%\)inw", i, DZeroPC);
+			if (D1px>0) D1pxPC = D1px*(100/toCoords[i]);
+			else D1pxPC = 0;
+			setResult("0-1PxDist\(\%\)inw", i, D1pxPC);
+		}
+		/* End of "both" section */
+		if(i==0) {
+			loopTime = getTime()-loopStart;
+			loopReporting = round(1000/loopTime);  /* set to update only ~ once per second */
+		}
 		if(progressUpdateIntervalCount==0) {
-			timeTaken = loopTime-loopStart;
-			timeLeft = (ROIs-(i+1)) * timeTaken/(i+1);
+			timeTaken = getTime()-loopStart;
+			timePerLoop = timeTaken/(i+1);
+			loopReporting = round(1000/timePerLoop);
+			timeLeft = (ROIs-(i+1)) * timePerLoop;
 			timeLeftM = floor(timeLeft/60000);
 			timeLeftS = (timeLeft-timeLeftM*60000)/1000;
 			totalTime = timeTaken + timeLeft;
-			maxFactor = 100000000/IJ.maxMemory();
+			/* This macro can consume a lot of memory, the following section tries to flush some of that memory at intervals */
 			mem = IJ.currentMemory();
 			mem /=1000000;
-			memPC = mem*maxFactor;
-			if (memPC>90) restoreExit("Memory use has exceeded 90% of maximum memory");
+			memPC = mem*maxMemFactor;
+			memIncPerLoop =( memPC-startMemPC)/(i+1);
+			memFlushInterval = 10/memIncPerLoop;
+			if (memoryFlushIntervalCount > memFlushInterval) {
+				run("Reset...", "reset=[Undo Buffer]"); 
+				wait(100);
+				run("Reset...", "reset=[Locked Image]"); 
+				wait(100);
+				call("java.lang.System.gc"); /* force a garbage collection */
+				wait(100);
+				memoryFlushIntervalCount = 0;
+				flushedMem = IJ.currentMemory();
+				flushedMem /=1000000;
+				memFlushed = mem-flushedMem;
+				memFlushedPC = (mem/100) * memFlushed;
+				print(memFlushedPC + "% Memory flushed at " + timeTaken);
+			}
+			if (memPC>95) restoreExit("Memory use has exceeded 95% of maximum memory");
 			print(progressWindowTitle, "\\Update:"+timeLeftM+" m " +timeLeftS+" s to completion ("+(timeTaken*100)/totalTime+"%)\n"+getBar(timeTaken, totalTime)+"\n Current Memory Usage: "  + memPC + "% of MaxMemory: ");
 		}
 		progressUpdateIntervalCount +=1;
+		memoryFlushIntervalCount +=1;
 		if (progressUpdateIntervalCount>loopReporting) progressUpdateIntervalCount = 0;
 		startRow = fromCoords[i];
-		// showStatus("Looping over object " + i + " complete, " + (ROIs-i) + " more to go");
 	}
 	updateResults();
 	eval("script","f = WindowManager.getWindow('Progress'); f.close();"); 
@@ -299,12 +384,13 @@
 	closeImageByTitle("InnerObjectsInLines");
 	closeImageByTitle("OuterObjectsInLines");
 	roiManager("deselect");
-	Table.create("Results_Distances");
+	distanceTableTitle = "Results_" + destName + "_Distances_for_" + ROIs + "_ROIs";
+	Table.create(distanceTableTitle);
 	startRow = 0;
 	endRow = 0;
 	for (i=0 ; i<ROIs; i++) {
+		endRow = startRow + fromCoords[i];
 		if (saveCoords==1) {
-			endRow = startRow + fromCoords[i];
 			Table.setColumn("From_X\("+i+"\)", Array.slice(fromAllXpoints,startRow,endRow));
 			Table.setColumn("From_Y\("+i+"\)", Array.slice(fromAllYpoints,startRow,endRow));
 			Table.setColumn("To_X\("+i+"\)", Array.slice(toAllXpoints,startRow,endRow));
@@ -312,32 +398,56 @@
 		}
 		if (lcf==1) { Table.setColumn("MinDist\(" + i + "\)" + destAb, Array.slice(allMinDists,startRow,endRow));}
 		else { Table.setColumn("MinDist\("+i+"\)"+destAb+"\("+unit+"\)", Array.slice(allMinDists,startRow,endRow));}
-		startRow += fromCoords[i];
+		startRow = endRow + 1;
+		if(direction=="Both") {
+			endRow = startRow + toCoords[i];
+			if (saveCoords==1) {
+				Table.setColumn("From_X_inw\("+i+"\)", Array.slice(toAllXpoints,startRow,endRow));
+				Table.setColumn("From_Y_inw\("+i+"\)", Array.slice(toAllYpoints,startRow,endRow));
+				Table.setColumn("To_X_inw\("+i+"\)", Array.slice(fromAllXpoints,startRow,endRow));
+				Table.setColumn("To_Y_inw\("+i+"\)", Array.slice(fromAllYpoints,startRow,endRow));
+			}
+			if (lcf==1) { Table.setColumn("MinDist\(" + i + "\)inw", Array.slice(allMinDists,startRow,endRow));}
+			else { Table.setColumn("MinDist\("+i+"\)inw\("+unit+"\)", Array.slice(allMinDists,startRow,endRow));}
+			startRow = endRow + 1;
+		}
 	}
 	Table.update;
 	if(colorCoderTable) {
-		Table.create("All_Min_Distances");
+		Array.getStatistics(allMinDists, AllMDmin, AllMDmax, AllMDmean, AllMDstdDev);
+		AllMDt = "All_" + lengthOf(allMinDists)+ "_" + destName + "_Min_Distances";
+		Table.create(AllMDt);
 		Table.setColumn("From_X", fromAllXpoints);
 		Table.setColumn("From_Y", fromAllYpoints);
 		Table.setColumn("To_X", toAllXpoints);
 		Table.setColumn("To_Y", toAllYpoints);
-		if (lcf==1) { Table.setColumn("MinDist", allMinDists);}
-		else { Table.setColumn("MinDist\("+unit+"\)", allMinDists);}
+		if (lcf==1) {
+			Table.setColumn("MinDist", allMinDists);
+			print("All Min Dist: Min = "+AllMDmin+", Max = "+AllMDmax+", Mean = " + AllMDmean + ", StdDev = "+ AllMDstdDev + " px")
+		}
+		else {
+			Table.setColumn("MinDist\("+unit+"\)", allMinDists);
+			print("All Min Dist: Min = "+AllMDmin+" " +unit+", Max = "+AllMDmax+" " +unit+", Mean = " + AllMDmean +" " +unit+ ", StdDev = "+ AllMDstdDev + " " +unit);
+		}
 		Table.update;
 	}		
 	print(ROIs + " objects in = " + (getTime()-start)/1000 + "s");
 	print("-----\n\n");
-	excelName =  substring(titleActiveImage, 0, lastIndexOf(titleActiveImage, ".")) + "_" + destAb;
+	excelName =  substring(titleActiveImage, 0, lastIndexOf(titleActiveImage, ".")) + "_" + destName;
 	if (pxAdv>1) excelName += "_skip"+(pxAdv-1)+"pxls";
-	saveExcelFile(dirActiveImage, excelName, "Results_Distances"); /* function saveExcelFile(outputPath, outputName, outputResultsTable) */
+	saveExcelFile(dirActiveImage, excelName, distanceTableTitle); /* function saveExcelFile(outputPath, outputName, outputResultsTable) */
 	saveExcelFile(dirActiveImage, excelName, "Results");
-	if(colorCoderTable) saveExcelFile(dirActiveImage, excelName, "All_Min_Distances");
+	if(colorCoderTable) saveExcelFile(dirActiveImage, excelName, AllMDt);
 	restoreSettings();
-	reset();
-	setBatchMode("exit & display"); /* exit batch mode */
-	run("Collect Garbage"); 
 	run("Revert");
 	showStatus("Min-Dist macro completed: " + ROIs + " objects in = " + (getTime()-start)/1000 + "s");
+	reset();
+	setBatchMode("exit & display"); /* exit batch mode */
+	run("Reset...", "reset=[Undo Buffer]"); 
+	wait(100);
+	run("Reset...", "reset=[Locked Image]"); 
+	wait(100);
+	run("Collect Garbage");  /* force a garbage collection */
 	/* End of Macro */
 	
 	function getBar(p1, p2) {
@@ -356,6 +466,7 @@
 	function binaryCheck(windowTitle) { /* For black objects on a white background */
 		/* v180601 added choice to invert or not */
 		/* v180907 added choice to revert to the true LUT, changed border pixel check to array stats */
+		/* v180925 added window titles to Booleans */
 		selectWindow(windowTitle);
 		if (is("binary")==0) run("8-bit");
 		/* Quick-n-dirty threshold if not previously thresholded */
@@ -366,7 +477,7 @@
 			run("Convert to Mask");
 		}
 		if (is("Inverting LUT")==true)  {
-			trueLUT = getBoolean("The LUT appears to be inverted, do you want the true LUT?", "Yes Please", "No Thanks");
+			trueLUT = getBoolean("The LUT of " + windowTitle + " appears to be inverted, do you want the true LUT?", "Yes Please", "No Thanks");
 			if (trueLUT==true) run("Invert LUT");
 		}
 		/* Make sure black objects on white background for consistency */
@@ -376,7 +487,7 @@
 		/*	Sometimes the outline procedure will leave a pixel border around the outside - this next step checks for this.
 			i.e. the corner 4 pixels should now be all black, if not, we have a "border issue". */
 		if (cornerMean==0) {
-			inversion = getBoolean("The background appears to have intensity zero, do you want the intensities inverted?", "Yes Please", "No Thanks");
+			inversion = getBoolean("The background of " + windowTitle + " appears to have intensity zero, do you want the intensities inverted?", "Yes Please", "No Thanks");
 			if (inversion==true) run("Invert"); 
 		}
 	}
