@@ -11,6 +11,8 @@
 	v180911-v180912 Major reworking to leverage use of new Table functions resulting in a 93%  reduction in run time.
 	v180913 Added option to output coordinates and distances in table suitable for the line color coder macro.
 	v180924-5 Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact
+	v180928 Removed some redundant code.
+	v180928b Only ROIs are duplicated for pixel acquisition.
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
 	run("Collect Garbage");
@@ -43,7 +45,6 @@
 	}			
 	Dialog.create("Options for Min-Dist_Solid_Objects_Edge-to-Edge_Stats_Table_and_Add_to_Results macro");
 	Dialog.addRadioButtonGroup("Direction of minimum distance search:", newArray("Inwards", "Outwards", "Both"),1,2,"Outwards");
-	// Dialog.addCheckbox("Outwards \(otherwise Inwards\)", true);
 	Dialog.addMessage("This macro uses two images as the sources inner and outer objects for the\ndistance measurements. It will try and guess if you have an \"inner\" or \"outer\"\nobjects image open for analysis. The active image is:\n  \n"+titleActiveImage+"\n  \nand is identified as:\n   \n______________ "+activeImageIs+"\n");
 	if (activeImageIs=="neither")
 		Dialog.addRadioButtonGroup("Is the active image the \"inner\" or the \"outer\"?", newArray("inner", "outer", "neither"), 1,3,"outer");
@@ -162,10 +163,8 @@
 		fromAllYpoints = newArray(0);
 		toAllXpoints = newArray(0);
 		toAllYpoints = newArray(0);
-		allDirections = newArray(0);
 	}
-	allMinDists = newArray(0);
-	allDirections = newArray();
+	allMinDists = newArray(0); /* All measurements are added to a single array to avoid repeated changes to tables */
 	loopStart = getTime();
 	progressUpdateIntervalCount = 0;
 	memoryFlushIntervalCount = 0;
@@ -173,30 +172,30 @@
 	for (i=0 ; i<ROIs; i++) {
 		// showProgress(-i, ROIs);
 		selectWindow("InnerObjectsInLines");
-		run("Duplicate...", "title=InnerObjectInLine");
 		roiManager("select", i);
+		Roi.getBounds(ROIx, ROIy, Rwidth, Rheight);
+		if (Rwidth==1 && Rheight==1) getBoolean("ROI #" + i + " is an isolated pixel: Do you want to continue?");
+		run("Duplicate...", "title=InnerObjectInLine"); /* only duplicates ROI */
 		run("Clear Outside"); /* Now only the ROI hole outline should be black */
 		run("Select None");
 		selectWindow("OuterObjectsInLines");
-		run("Duplicate...", "title=OuterObjectInLine"); /* Generate temporary image for each ROI */
 		roiManager("select", i);
+		run("Duplicate...", "title=OuterObjectInLine"); /* Generate temporary image that retains ROI selection */
 		run("Clear Outside"); /* Now only the ROI-contained object should be black */
-		Roi.getBounds(Rx, Ry, Rwidth, Rheight);
-		if (Rwidth==1 && Rheight==1) getBoolean("ROI #" + i + " is an isolated pixel: Do you want to continue?");
+
 		fromXpoints = newArray(0);
 		fromYpoints = newArray(0);
 		toXpoints = newArray(0);
 		toYpoints = newArray(0);
-		RxEnd = Rx+Rwidth;
-		RyEnd = Ry+Rheight;
+
 		Label = i+1;
 		if (direction=="Outwards" || direction=="Both") /* switch windows for Outward */
 			selectWindow("InnerObjectInLine");
-		for (x=Rx; x<RxEnd; x+=pxAdv){ /* Sampling of source data points set by pxAdv */
-			for (y=Ry; y<RyEnd; y+=pxAdv){ /* Sampling of source data points set by pxAdv */
+		for (x=0; x<Rwidth; x+=pxAdv){ /* Sampling of source data points set by pxAdv */
+			for (y=0; y<Rheight; y+=pxAdv){ /* Sampling of source data points set by pxAdv */
 				if((getPixel(x, y))==0) { /* Add only black pixels to array. */
-					fromXpoints = Array.concat(fromXpoints,x);
-					fromYpoints = Array.concat(fromYpoints,y);
+					fromXpoints = Array.concat(fromXpoints,x+ROIx);
+					fromYpoints = Array.concat(fromYpoints,y+ROIy);
 				}
 			}
 		}
@@ -205,11 +204,11 @@
 		if (direction=="Outwards" || direction=="Both") /* switch windows for Outward */
 			selectWindow("OuterObjectInLine");
 		else selectWindow("InnerObjectInLine");
-		for (x=Rx; x<RxEnd; x++){
-			for (y=Ry; y<RyEnd; y++){
+		for (x=0; x<Rwidth; x++){
+			for (y=0; y<Rheight; y++){
 				if((getPixel(x, y))==0) { /* Add only black pixels to array. */
-					toXpoints = Array.concat(toXpoints,x);
-					toYpoints = Array.concat(toYpoints,y);
+					toXpoints = Array.concat(toXpoints,x+ROIx);
+					toYpoints = Array.concat(toYpoints,y+ROIy);
 				}
 			}
 		}
@@ -245,7 +244,7 @@
 			if (lcf!=1) minDist[f] *= lcf;
 		}
 		allMinDists = Array.concat(allMinDists, minDist);
-		if (saveCoords==1) {
+		if (saveCoords) {
 			fromAllXpoints = Array.concat(fromAllXpoints, fromXpoints);
 			fromAllYpoints = Array.concat(fromAllYpoints, fromYpoints);
 			toAllXpoints = Array.concat(toAllXpoints, minToX);
@@ -303,7 +302,7 @@
 				if (lcf!=1) minDist[t] *= lcf;
 			}
 			allMinDists = Array.concat(allMinDists, minDist);
-			if (saveCoords==1) {
+			if (saveCoords) {
 				toAllXpoints = Array.concat(toAllXpoints, toXpoints);
 				toAllYpoints = Array.concat(toAllYpoints, toYpoints);
 				fromAllXpoints = Array.concat(fromAllXpoints, minFromX);
@@ -352,12 +351,7 @@
 			memIncPerLoop =( memPC-startMemPC)/(i+1);
 			memFlushInterval = 10/memIncPerLoop;
 			if (memoryFlushIntervalCount > memFlushInterval) {
-				run("Reset...", "reset=[Undo Buffer]"); 
-				wait(100);
-				run("Reset...", "reset=[Locked Image]"); 
-				wait(100);
-				call("java.lang.System.gc"); /* force a garbage collection */
-				wait(100);
+				memFlush(200);
 				memoryFlushIntervalCount = 0;
 				flushedMem = IJ.currentMemory();
 				flushedMem /=1000000;
@@ -390,7 +384,7 @@
 	endRow = 0;
 	for (i=0 ; i<ROIs; i++) {
 		endRow = startRow + fromCoords[i];
-		if (saveCoords==1) {
+		if (saveCoords) {
 			Table.setColumn("From_X\("+i+"\)", Array.slice(fromAllXpoints,startRow,endRow));
 			Table.setColumn("From_Y\("+i+"\)", Array.slice(fromAllYpoints,startRow,endRow));
 			Table.setColumn("To_X\("+i+"\)", Array.slice(toAllXpoints,startRow,endRow));
@@ -401,7 +395,7 @@
 		startRow = endRow + 1;
 		if(direction=="Both") {
 			endRow = startRow + toCoords[i];
-			if (saveCoords==1) {
+			if (saveCoords) {
 				Table.setColumn("From_X_inw\("+i+"\)", Array.slice(toAllXpoints,startRow,endRow));
 				Table.setColumn("From_Y_inw\("+i+"\)", Array.slice(toAllYpoints,startRow,endRow));
 				Table.setColumn("To_X_inw\("+i+"\)", Array.slice(fromAllXpoints,startRow,endRow));
@@ -443,11 +437,7 @@
 	showStatus("Min-Dist macro completed: " + ROIs + " objects in = " + (getTime()-start)/1000 + "s");
 	reset();
 	setBatchMode("exit & display"); /* exit batch mode */
-	run("Reset...", "reset=[Undo Buffer]"); 
-	wait(100);
-	run("Reset...", "reset=[Locked Image]"); 
-	wait(100);
-	run("Collect Garbage");  /* force a garbage collection */
+	memFlush(200);
 	/* End of Macro */
 	
 	function getBar(p1, p2) {
@@ -559,6 +549,15 @@
 		if (dayOfMonth<10) dayOfMonth = "0" + dayOfMonth;
 		dateCodeUS = monthStr+dayOfMonth+substring(year,2);
 		return dateCodeUS;
+	}
+	function memFlush(waitTime) {
+		
+		run("Reset...", "reset=[Undo Buffer]"); 
+		wait(waitTime);
+		run("Reset...", "reset=[Locked Image]"); 
+		wait(waitTime);
+		call("java.lang.System.gc"); /* force a garbage collection */
+		wait(waitTime);
 	}
 	function restoreExit(message){ /* Make a clean exit from a macro, restoring previous settings */
 		/* 9/9/2017 added Garbage clean up suggested by Luc LaLonde - LBNL */
