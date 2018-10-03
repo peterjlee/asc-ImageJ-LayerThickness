@@ -1,24 +1,14 @@
-/*	ImageJ Macro to calculate minimum distances between the edges of solid objects in a two-image set.
-	One image contains the "inner" object and one the "outer" enclosing object.
-	This allows you to analyze objects with broken rings.
- 	Inwards or Outwards directions using "In-Line" (ImageJ "Outlines" are inside of binary objects").
+/*	ImageJ Macro to calculate minimum distances:
+ 	Wall thickness where each object is hollow (inwards or outwards using "In-lines")
+	Inwards or Outwards directions using "In-Line" (ImageJ "Outlines" are inside of binary objects").																					   
 	6/7/2016 Peter J. Lee (NHMFL), simplified 6/13-28/2016, changed table output extension to csv for Excel 2016 compatibility 8/15/2017
-	8/18/2017 Removed a label function that was not working beyond 255 object noticed by Ian Pong and Luc LaLonde at LBNL
+	8/23/2017 Removed a label function that was not working beyond 255 object noticed by Ian Pong and Luc LaLonde at LBNL
 	9/9/2017 Added garbage clean up as suggested by Luc LaLonde at LBNL.
-	v180906 Removed redundant dialog line.
-	v180907 Updated ASC functions to latest versions. Added checks for outlier areas and isolated pixels.
-	v180910 Very minor code cleanup.
-	v180911-v180912 Major reworking to leverage use of new Table functions resulting in a 93%  reduction in run time.
-	v180913 Added option to output coordinates and distances in table suitable for the line color coder macro.
-	v180924-5 Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact
-	v180928 Removed some redundant code.
-	v180928b Only ROIs are duplicated for pixel acquisition.
+	v180911-v181002 Major reworking to leverage use of new Table functions resulting in a 93%  reduction in run time. Added option to output coordinates and distances in table suitable for the line color coder macro. Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact. Removed some redundant code.Only ROIs are duplicated for pixel acquisition.
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
-	run("Collect Garbage");
 	saveSettings(); /* To restore settings at the end */
 	snapshot();
-		
 	/*   ('.')  ('.')   Black objects on white background settings   ('.')   ('.')   */	
 	/* Set options for black objects on white background as this works better for publications */
 	run("Options...", "iterations=1 white count=1"); /* Set the background to white */
@@ -33,44 +23,25 @@
 	mem = IJ.currentMemory();
 	mem /=1000000;
 	startMemPC = mem*maxMemFactor;
-	titleActiveImage = getTitle();
-	dirActiveImage = getDirectory("image");
-	activeImageIs = "neither";
-	if((indexOf(titleActiveImage, "nner"))>= 0) {
-		activeImageIs = "inner";
-	}
-	if((indexOf(titleActiveImage, "uter"))>= 0) {
-		if(activeImageIs=="neither") activeImageIs = "outer";
-		else activeImageIs = "neither";
-	}			
-	Dialog.create("Options for Min-Dist_Solid_Objects_Edge-to-Edge_Stats_Table_and_Add_to_Results macro");
+	titleOuterObjects = getTitle();
+	dirOuterObjects = getDirectory("image");
+	binaryCheck(titleOuterObjects);
+	ROIs = checkForRoiManager();
+	Dialog.create("Options for Min-Dist_Rings_Stats_Table_and_Add_to_Results macro");
 	Dialog.addRadioButtonGroup("Direction of minimum distance search:", newArray("Inwards", "Outwards", "Both"),1,2,"Outwards");
-	Dialog.addMessage("This macro uses two images as the sources inner and outer objects for the\ndistance measurements. It will try and guess if you have an \"inner\" or \"outer\"\nobjects image open for analysis. The active image is:\n  \n"+titleActiveImage+"\n  \nand is identified as:\n   \n______________ "+activeImageIs+"\n");
-	if (activeImageIs=="neither")
-		Dialog.addRadioButtonGroup("Is the active image the \"inner\" or the \"outer\"?", newArray("inner", "outer", "neither"), 1,3,"outer");
+	Dialog.addMessage("This macro uses images that are rings to provide inner and outer object locations for the\ndistance measurements.");
 	Dialog.addMessage("Skipping origin pixels can greatly speed up this macro for very large images.\nTo retain resolution, only the \"from\" x and y pixels will be advanced\nwhereas the \"to\" pixels will be retained for accuracy.\nNote: Both x and y are advanced so a setting of 1 results in 1/4 points.");
 	Dialog.addNumber("Number of origin pixels to skip", 0);
 	Dialog.addCheckbox("Do you want to include all x and y coordinates in the Distance Table?", true);
 	Dialog.addCheckbox("Do you want to also output all minimum distances and coordinates in one 5 column table for use in the line color coder macro?", false);
-		
+								
 	Dialog.show();
-	direction = Dialog.getRadioButton();
-	if (activeImageIs=="neither") {
-		activeImageIs = Dialog.getRadioButton();
-		if (activeImageIs=="neither") {
-			Dialog.create("Do you want to open a different file or exit?");
-			Dialog.addCheckbox("Open New File?", true);
-			Dialog.addRadioButtonGroup("Is the new image \"inner\" or \"outer\"?", newArray("inner", "outer"), 1,3,"outer");
-			Dialog.show();
-			if((Dialog.getCheckbox())==1) open(); /* if (analyzeNow==true) ImageJ analyze particles will be performed, otherwise exit */
-			else restoreExit();
-			activeImageIs = Dialog.getRadioButton();
-		}
-	}
+	direction = Dialog.getRadioButton(); /* if (direction==true) distance direction will be inwards */
 	pxAdv = Dialog.getNumber()+1; /* add 1 so that it can be used directly in the loop incrementals */
 	saveCoords = Dialog.getCheckbox();
 	colorCoderTable = Dialog.getCheckbox();
-			
+	print("This macro adds Minimum Distances \(Inlines\) analysis to the Results Table.");
+	print("Macro: " + getInfo("macro.filepath"));
 	print("This macro adds Minimum Distances \(Inlines\) analysis to the Results Table.");
 	print("Macro: " + getInfo("macro.filepath"));
 	if (direction=="Outwards" || direction=="Both"){
@@ -82,78 +53,31 @@
 		destName = "Inw";
 	}
 	print("Distance direction selected to be "+destName+", advancing " + pxAdv + " \"from\" pixels in x and y directions.");
+	start = getTime(); /* Start timer after last requester for debugging. */
+	setBatchMode(true);
+	print("Image used for outer and inner inlines: " + titleOuterObjects);	 
 	
-	print("Original image: " + titleActiveImage);	 
 	imageWidth = getWidth();
 	imageHeight = getHeight();
 	getPixelSize(unit, pixelWidth, pixelHeight);
 	lcf=(pixelWidth+pixelHeight)/2; /* ---> add here the side size of 1 pixel in the new calibrated units (e.g. lcf=5, if 1 pixels is 5mm) <--- */
 	print("Original magnification scale factor used = " + lcf + " with units: " + unit);
-	/* Guess files to be used from active image name */
 	titleActiveImage = getTitle();
 	dirActiveImage = getInfo("image.directory");
-	lastActiveInner = lastIndexOf(titleActiveImage, "_inner");
-	lastActiveOuter = lastIndexOf(titleActiveImage, "_outer");
-	if (lastActiveInner>=0) titleSwitch = substring(titleActiveImage,0,lastActiveInner)+"_outer";
-	else if (lastActiveOuter>=0) titleSwitch = substring(titleActiveImage,0,lastActiveOuter)+"_inner";
-	else titleSwitch = "unknown";
-	if (lastActiveInner<0 || activeImageIs=="outer") { /* There was no "_inner" in the active inner name, so the active window is assumed to be "Outer" */
-		titleOuterObjects = titleActiveImage;
-		print("Active image is assumed to be outer Outline: " + titleOuterObjects);
-		titleInnerObjects = titleSwitch;
-		pathInnerGuess = dirActiveImage + titleInnerObjects;
-		if (File.exists(pathInnerGuess)==true) {
-			print(File.exists(pathInnerGuess));
-			open(pathInnerGuess);
-			print("Image auto-loaded for inner Outline: " + titleInnerObjects);
-		}
-		else { /* Ask for a file to be imported */
-			print("No \"_outer\" - \"_inner\" filename match found");
-			fileName = File.openDialog("Select an inner reference \(white\) objects");
-			open(fileName);
-			titleInnerObjects = getTitle();	 
-			print("Image selected for Inner Outline: " + titleInnerObjects);
-		}
-	}
-	else {  /* there was "_inner" in the active image name or inner was specified so active is assumed to "Outer" */
-		titleInnerObjects = titleActiveImage; /* Assume that the starting image is inner if it contains "_inner" */
-		print("Active image is assumed to be inner Outline: " + titleInnerObjects);
-		/* guess outer filename (_inner replaced with _outer) */
-		pathOuterGuess = dirActiveImage + titleSwitch;
-		if (File.exists(pathOuterGuess)==true) {
-			titleOuterObjects = titleSwitch;
-			open(pathOuterGuess);	 
-			print("Image auto-loaded for outer Outline: " + titleOuterObjects);
-		}
-		else { /* Ask for a file to be imported */
-			print("No \"_outer\" - \"_inner\" filename match found");
-			fileName = File.openDialog("Select an inner reference \(white\) objects");
-			open(fileName);
-			titleOuterObjects = getTitle();	 
-			print("Image selected for outer Outline: " + titleOuterObjects);
-		}
-	}
-	binaryCheck(titleInnerObjects);
-	binaryCheck(titleOuterObjects); /* See functions: Checks to see if images are in the correct format */
-	selectWindow(titleOuterObjects);
-	ROIs = checkForRoiManager();
-	if (checkForOutlierAreas()) restoreExit("Outlier objects of outlier test fail");
-	setBatchMode(true); /* Turn batch mode on */
-	start = getTime(); /* Start timer after last requester for debugging. */
-	
-	selectWindow(titleInnerObjects);
 	run("Select None");
-	run("Duplicate...", "title=InnerObjectsInLines");
-	run("Fill Holes");  /* Just in case */
-	run("Outline"); /* InnerObjectsInLines should now be black rings on a white background */
-
-	selectWindow(titleOuterObjects);
-	run("Select None");
-	run("Duplicate...", "title=OuterObjectsInLines");
+	run("Duplicate...", "title=HoleInLines"); /* Image title a little confusing at this stage but this is what it will become. */
 	run("Fill Holes");
-	run("Outline"); /* OuterObjectsInLines should now be black rings on a white background */
+	imageCalculator("XOR", "HoleInLines", titleOuterObjects); /* Generates solid white core on black background */
+	run("Invert");	/* Use invert to make black cores for "in-lines" from outline */
+	run("Outline"); /* HoleInLines should now be black rings on a white background */
+	print("Inner InLine is generated from hole in ring.");
+	selectWindow(titleOuterObjects);
+	run("Select None");
+	run("Duplicate...", "title=OuterInLines");
+	run("Fill Holes");
+	run("Outline"); /* OuterInLines should now be black rings on a white background */
 	print("Outer InLine has been generated from hole-filled objects");
-	progressWindowTitleS = "Primary_MinDist_Progress"; /* scripts do not need square brackets */
+	progressWindowTitleS = "Primary_MinDist_Progress";
 	progressWindowTitle = "[" + progressWindowTitleS + "]";
 	run("Text Window...", "name="+ progressWindowTitle +" width=25 height=2 monospaced");
 	eval("script","f = WindowManager.getWindow('"+progressWindowTitleS+"'); f.setLocation(50,20); f.setSize(550,150);"); 
@@ -171,27 +95,26 @@
 	memoryFlushIntervalCount = 0;
 	startRow = 0;
 	for (i=0 ; i<ROIs; i++) {
-		// showProgress(-i, ROIs);
-		selectWindow("InnerObjectsInLines");
+		showStatus("Looping over object " + i + ", " + (ROIs-i) + " more to go");
+		selectWindow("HoleInLines");
 		roiManager("select", i);
 		Roi.getBounds(ROIx, ROIy, Rwidth, Rheight);
 		if (Rwidth==1 && Rheight==1) getBoolean("ROI #" + i + " is an isolated pixel: Do you want to continue?");
-		run("Duplicate...", "title=InnerObjectInLine"); /* only duplicates ROI */
+		run("Duplicate...", "title=HoleInLine"); /* Generate temporary image for each ROI */
 		run("Clear Outside"); /* Now only the ROI hole outline should be black */
 		run("Select None");
-		selectWindow("OuterObjectsInLines");
+		selectWindow("OuterInLines");
 		roiManager("select", i);
-		run("Duplicate...", "title=OuterObjectInLine"); /* Generate temporary image that retains ROI selection */
-		run("Clear Outside"); /* Now only the ROI-contained object should be black */
-
+		run("Duplicate...", "title=OuterInLine");
+		run("Clear Outside"); /* Now only the ROI hole outline should be black */
 		fromXpoints = newArray(0);
 		fromYpoints = newArray(0);
 		toXpoints = newArray(0);
-		toYpoints = newArray(0);
-
+		toYpoints = newArray(0);			
 		Label = i+1;
 		if (direction=="Outwards" || direction=="Both") /* switch windows for Outward */
-			selectWindow("InnerObjectInLine");
+			selectWindow("HoleInLine");
+		fromCoords[i] = 0; /* Reset row counter */										   
 		for (x=0; x<Rwidth; x+=pxAdv){ /* Sampling of source data points set by pxAdv */
 			for (y=0; y<Rheight; y+=pxAdv){ /* Sampling of source data points set by pxAdv */
 				if((getPixel(x, y))==0) { /* Add only black pixels to array. */
@@ -203,8 +126,8 @@
 		fromCoords[i] = lengthOf(fromXpoints);
 		if (fromCoords[i]==0) restoreExit("Issue with ROI#" + i + ": no From points");
 		if (direction=="Outwards" || direction=="Both") /* switch windows for Outward */
-			selectWindow("OuterObjectInLine");
-		else selectWindow("InnerObjectInLine");
+			selectWindow("OuterInLine");
+		else selectWindow("HoleInLine");
 		for (x=0; x<Rwidth; x++){
 			for (y=0; y<Rheight; y++){
 				if((getPixel(x, y))==0) { /* Add only black pixels to array. */
@@ -215,15 +138,15 @@
 		}
 		toCoords[i] = lengthOf(toXpoints);
 		if (toCoords[i]==0) restoreExit("Issue with ROI#" + i + ": no \"To\" points");
-		closeImageByTitle("InnerObjectInLine"); /* Reset InLine for each object */
-		closeImageByTitle("OuterObjectInLine"); /* Reset InLine for each object */
-		
+		/* if the ring is broken the arrays size will be zero */
+		closeImageByTitle("HoleInLine"); /* Reset InLine for each object */
+		closeImageByTitle("OuterInLine"); /* Reset InLine for each object */
 		DZeros = 0;
 		D1px = 0;
 		minDist = newArray(fromCoords[i]);
 		minToX = newArray(fromCoords[i]);
 		minToY = newArray(fromCoords[i]);
- 
+
 		for  (f=0 ; f<(fromCoords[i]); f++) {
 			showProgress(f, fromCoords[i]);
 			X1 = fromXpoints[f];
@@ -276,7 +199,7 @@
 		
 		/* Now add the reverse direction results if "both" directions requested */
 		if (direction=="Both") {
-			updateResults(); /* Helps stability of "ring" version of this macro so added here as a precaution   ¯\_(?)_/¯ */
+			updateResults(); /* Helps stability of macro  ¯\_(?)_/¯ */
 			DZeros = 0;
 			D1px = 0;
 			minDist = newArray(toCoords[i]);
@@ -338,7 +261,7 @@
 			loopTime = getTime()-loopStart;
 			loopReporting = round(1000/loopTime);  /* set to update only ~ once per second */
 		}
-		if(progressUpdateIntervalCount==0) {
+		if(progressUpdateIntervalCount==0 || t==(toCoords[i]-1)) {
 			timeTaken = getTime()-loopStart;
 			timePerLoop = timeTaken/(i+1);
 			loopReporting = round(1000/timePerLoop);
@@ -371,13 +294,8 @@
 	}
 	updateResults();
 	eval("script","WindowManager.getWindow('"+progressWindowTitleS+"').close();");
-	if (isOpen(titleActiveImage)) {
-		if (titleActiveImage!=titleInnerObjects) closeImageByTitle(titleInnerObjects);
-		if (titleActiveImage!=titleOuterObjects) closeImageByTitle(titleOuterObjects);
-		reset();
-	}	
-	closeImageByTitle("InnerObjectsInLines");
-	closeImageByTitle("OuterObjectsInLines");
+	closeImageByTitle("HoleInLines");
+	closeImageByTitle("OuterInLines");
 	roiManager("deselect");
 	distanceTableTitle = "Results_" + destName + "_Distances_for_" + ROIs + "_ROIs";
 	Table.create(distanceTableTitle);
@@ -435,13 +353,13 @@
 	if(colorCoderTable) saveExcelFile(dirActiveImage, excelName, AllMDt);
 	restoreSettings();
 	run("Revert");
-	showStatus("Min-Dist macro completed: " + ROIs + " objects in = " + (getTime()-start)/1000 + "s");
+	showStatus("Min-Dist rings macro completed: " + ROIs + " objects in = " + (getTime()-start)/1000 + "s");
 	reset();
 	setBatchMode("exit & display"); /* exit batch mode */
 	memFlush(200);
-	/* End of Macro Layer Thickness Macro */
+	/* End of Macro Ring version of min-dist macro */
 	
-	function getBar(p1, p2) {
+   	function getBar(p1, p2) {
 		/* from https://imagej.nih.gov/ij/macros/ProgressBar.txt */
         n = 20;
         bar1 = "--------------------";
@@ -454,7 +372,7 @@
 	/*
 		( 8(|)	( 8(|)	ASC Functions	@@@@@:-)	@@@@@:-)
 	*/
-	function binaryCheck(windowTitle) { /* For black objects on a white background */
+		function binaryCheck(windowTitle) { /* For black objects on a white background */
 		/* v180601 added choice to invert or not */
 		/* v180907 added choice to revert to the true LUT, changed border pixel check to array stats */
 		/* v180925 added window titles to Booleans */
@@ -527,7 +445,7 @@
 		return roiManager("count"); /* Returns the new count of entries */
 	}
 	function cleanUp() { /* cleanup leftovers from previous runs */
-		closeNonImageByTitle("Results_Distances");
+  		closeNonImageByTitle("Results_Distances");
 	}
 	function closeImageByTitle(windowTitle) {  /* Cannot be used with tables */
 		/* v181002 reselects original image at end if open */
@@ -555,7 +473,6 @@
 		return dateCodeUS;
 	}
 	function memFlush(waitTime) {
-		
 		run("Reset...", "reset=[Undo Buffer]"); 
 		wait(waitTime);
 		run("Reset...", "reset=[Locked Image]"); 
@@ -579,5 +496,5 @@
 			overWriteFile=getBoolean("Do you want to overwrite " + resultsPath + "?");
 			if(overWriteFile==1)
 					saveAs("results", resultsPath);
-		}		
+		}
 	}
