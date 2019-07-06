@@ -4,7 +4,7 @@
 	6/7/2016 Peter J. Lee (NHMFL), simplified 6/13-28/2016, changed table output extension to csv for Excel 2016 compatibility 8/15/2017
 	8/23/2017 Removed a label function that was not working beyond 255 object noticed by Ian Pong and Luc LaLonde at LBNL
 	9/9/2017 Added garbage clean up as suggested by Luc LaLonde at LBNL.
-	v180911-v181002 Major reworking to leverage use of new Table functions resulting in a 93%  reduction in run time. Added option to output coordinates and distances in table suitable for the line color coder macro. Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact. Removed some redundant code.Only ROIs are duplicated for pixel acquisition.
+	v180911-v181002 Major reworking to leverage use of new Table functions resulting in a 93%  reduction in run time. Added option to output coordinates and distances in table suitable for the line color coder macro. Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact. Removed some redundant code.Only ROIs are duplicated for pixel acquisition. v190325 minor tweaks to syntax.
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
 	saveSettings(); /* To restore settings at the end */
@@ -14,7 +14,7 @@
 	run("Options...", "iterations=1 white count=1"); /* Set the background to white */
 	run("Colors...", "foreground=black background=white selection=yellow"); /* Set the preferred colors for these macros */
 	setOption("BlackBackground", false);
-	run("Appearance...", " "); /* Do not use Inverting LUT */
+	run("Appearance...", " "); if(is("Inverting LUT")) run("Invert LUT"); /* do not use Inverting LUT */
 	/*	The above should be the defaults but this makes sure (black particles on a white background)
 		http://imagejdocu.tudor.lu/doku.php?id=faq:technical:how_do_i_set_up_imagej_to_deal_with_white_particles_on_a_black_background_by_default */
 	cleanUp(); /* function to cleanup old windows (I hope you did not want them). Run before cleanup.*/
@@ -99,7 +99,10 @@
 		selectWindow("HoleInLines");
 		roiManager("select", i);
 		Roi.getBounds(ROIx, ROIy, Rwidth, Rheight);
-		if (Rwidth==1 && Rheight==1) getBoolean("ROI #" + i + " is an isolated pixel: Do you want to continue?");
+		if ((Rwidth&&Rheight)==1) {
+			continue = getBoolean("ROI #" + i + " is an isolated pixel: Do you want to continue?");
+			if (!continue) restoreExit("Goodbye");
+		}
 		run("Duplicate...", "title=HoleInLine"); /* Generate temporary image for each ROI */
 		run("Clear Outside"); /* Now only the ROI hole outline should be black */
 		run("Select None");
@@ -281,7 +284,7 @@
 				flushedMem = IJ.currentMemory();
 				flushedMem /=1000000;
 				memFlushed = mem-flushedMem;
-				memFlushedPC = (mem/100) * memFlushed;
+				memFlushedPC = (100/mem) * memFlushed;
 				print(memFlushedPC + "% Memory flushed at " + timeTaken);
 			}
 			if (memPC>95) restoreExit("Memory use has exceeded 95% of maximum memory");
@@ -360,7 +363,7 @@
 	/* End of Macro Ring version of min-dist macro */
 	
    	function getBar(p1, p2) {
-		/* from https://imagej.nih.gov/ij/macros/ProgressBar.txt */
+		/* from https://wsr.imagej.net//macros/ProgressBar.txt */
         n = 20;
         bar1 = "--------------------";
         bar2 = "********************";
@@ -491,10 +494,10 @@
 		selectWindow(outputResultsTable);
 		resultsPath = outputDir + outputName + "_" + outputResultsTable + "_" + getDateCode() + ".csv"; /* CSV behaves better with Excel 2016 than XLS */
 		if (File.exists(resultsPath)==0)
-			saveAs("results", resultsPath);
+			saveAs("Results", resultsPath);
 		else {
 			overWriteFile=getBoolean("Do you want to overwrite " + resultsPath + "?");
 			if(overWriteFile==1)
-					saveAs("results", resultsPath);
+					saveAs("Results", resultsPath);
 		}
 	}
