@@ -12,7 +12,7 @@
 	v180913 Added option to output coordinates and distances in table suitable for the line color coder macro.
 	v180924-5 Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact
 	v180928 Removed some redundant code.
-	v180928b Only ROIs are duplicated for pixel acquisition.
+	v180928b Only ROIs are duplicated for pixel acquisition. v190325 minor tweaks to syntax.
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
 	run("Collect Garbage");
@@ -24,7 +24,7 @@
 	run("Options...", "iterations=1 white count=1"); /* Set the background to white */
 	run("Colors...", "foreground=black background=white selection=yellow"); /* Set the preferred colors for these macros */
 	setOption("BlackBackground", false);
-	run("Appearance...", " "); /* Do not use Inverting LUT */
+	run("Appearance...", " "); if(is("Inverting LUT")) run("Invert LUT"); /* do not use Inverting LUT */
 	/*	The above should be the defaults but this makes sure (black particles on a white background)
 		http://imagejdocu.tudor.lu/doku.php?id=faq:technical:how_do_i_set_up_imagej_to_deal_with_white_particles_on_a_black_background_by_default */
 	cleanUp(); /* function to cleanup old windows (I hope you did not want them). Run before cleanup.*/
@@ -175,7 +175,10 @@
 		selectWindow("InnerObjectsInLines");
 		roiManager("select", i);
 		Roi.getBounds(ROIx, ROIy, Rwidth, Rheight);
-		if (Rwidth==1 && Rheight==1) getBoolean("ROI #" + i + " is an isolated pixel: Do you want to continue?");
+		if ((Rwidth&&Rheight)==1) {
+			continue = getBoolean("ROI #" + i + " is an isolated pixel: Do you want to continue?");
+			if (!continue) restoreExit("Goodbye");
+		}
 		run("Duplicate...", "title=InnerObjectInLine"); /* only duplicates ROI */
 		run("Clear Outside"); /* Now only the ROI hole outline should be black */
 		run("Select None");
@@ -358,7 +361,7 @@
 				flushedMem = IJ.currentMemory();
 				flushedMem /=1000000;
 				memFlushed = mem-flushedMem;
-				memFlushedPC = (mem/100) * memFlushed;
+				memFlushedPC = (100/mem) * memFlushed;
 				print(memFlushedPC + "% Memory flushed at " + timeTaken);
 			}
 			if (memPC>95) restoreExit("Memory use has exceeded 95% of maximum memory");
@@ -442,7 +445,7 @@
 	/* End of Macro Layer Thickness Macro */
 	
 	function getBar(p1, p2) {
-		/* from https://imagej.nih.gov/ij/macros/ProgressBar.txt */
+		/* from https://wsr.imagej.net//macros/ProgressBar.txt */
         n = 20;
         bar1 = "--------------------";
         bar2 = "********************";
@@ -574,10 +577,10 @@
 		selectWindow(outputResultsTable);
 		resultsPath = outputDir + outputName + "_" + outputResultsTable + "_" + getDateCode() + ".csv"; /* CSV behaves better with Excel 2016 than XLS */
 		if (File.exists(resultsPath)==0)
-			saveAs("results", resultsPath);
+			saveAs("Results", resultsPath);
 		else {
 			overWriteFile=getBoolean("Do you want to overwrite " + resultsPath + "?");
 			if(overWriteFile==1)
-					saveAs("results", resultsPath);
+					saveAs("Results", resultsPath);
 		}		
 	}
