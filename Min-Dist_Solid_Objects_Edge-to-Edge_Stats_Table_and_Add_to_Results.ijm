@@ -13,8 +13,10 @@
 	v180924-5 Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact
 	v180928 Removed some redundant code.
 	v180928b Only ROIs are duplicated for pixel acquisition. v190325 minor tweaks to syntax.
+	v211029 Updated functions
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
+	macroL = "Min-Dist_Solid_Objects_Edge-to-Edge_Stats_Table_and_Add_to_Results_v211029.ijm";
 	run("Collect Garbage");
 	saveSettings(); /* To restore settings at the end */
 	snapshot();
@@ -44,6 +46,7 @@
 		else activeImageIs = "neither";
 	}			
 	Dialog.create("Options for Min-Dist_Solid_Objects_Edge-to-Edge_Stats_Table_and_Add_to_Results macro");
+	Dialog.addMessage("This macro version: " + macroL);
 	Dialog.addRadioButtonGroup("Direction of minimum distance search:", newArray("Inwards", "Outwards", "Both"),1,2,"Outwards");
 	Dialog.addMessage("This macro uses two images as the sources inner and outer objects for the\ndistance measurements. It will try and guess if you have an \"inner\" or \"outer\"\nobjects image open for analysis. The active image is:\n  \n"+titleActiveImage+"\n  \nand is identified as:\n   \n______________ "+activeImageIs+"\n");
 	if (activeImageIs=="neither")
@@ -235,7 +238,7 @@
 			for (t=0 ; t<toCoords[i]; t++) {
 				X2 = toXpoints[t];
 				Y2 = toYpoints[t];
-				D = sqrt((X1-X2)*(X1-X2)+(Y1-Y2)*(Y1-Y2));
+				D = sqrt(pow(X1-X2,2)+pow(Y1-Y2,2));
 				if (minDist[f]>D) {
 					minDist[f] = D;  /* using this loop is very slightly faster than using array statistics */
 					minIndex = t;
@@ -294,7 +297,7 @@
 				for (f=0; f<fromCoords[i]; f++) {
 					X2 = fromXpoints[f];
 					Y2 = fromYpoints[f];
-					D = sqrt((X1-X2)*(X1-X2)+(Y1-Y2)*(Y1-Y2));
+					D = sqrt(pow(X1-X2,2)+pow(Y1-Y2,2));
 					if (minDist[t]>D) {
 						minDist[t] = D;  /* using this loop is very slightly faster than using array statistics */
 						minIndex = f;
@@ -445,7 +448,7 @@
 	/* End of Macro Layer Thickness Macro */
 	
 	function getBar(p1, p2) {
-		/* from https://wsr.imagej.net//macros/ProgressBar.txt */
+		/* from https://imagej.nih.gov/ij//macros/ProgressBar.txt */
         n = 20;
         bar1 = "--------------------";
         bar2 = "********************";
@@ -574,6 +577,7 @@
 		exit(message);
 	}
 	function saveExcelFile(outputDir, outputName, outputResultsTable) {
+	/* v190116 corrected typo in resultsPath */
 		selectWindow(outputResultsTable);
 		resultsPath = outputDir + outputName + "_" + outputResultsTable + "_" + getDateCode() + ".csv"; /* CSV behaves better with Excel 2016 than XLS */
 		if (File.exists(resultsPath)==0)

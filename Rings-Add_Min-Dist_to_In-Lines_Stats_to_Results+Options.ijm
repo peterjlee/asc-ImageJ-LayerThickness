@@ -5,8 +5,10 @@
 	8/23/2017 Removed a label function that was not working beyond 255 object noticed by Ian Pong and Luc LaLonde at LBNL
 	9/9/2017 Added garbage clean up as suggested by Luc LaLonde at LBNL.
 	v180911-v181002 Major reworking to leverage use of new Table functions resulting in a 93%  reduction in run time. Added option to output coordinates and distances in table suitable for the line color coder macro. Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact. Removed some redundant code.Only ROIs are duplicated for pixel acquisition. v190325 minor tweaks to syntax.
+	v211029 Updated functions to latest versions
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
+	mscroL = "Rings-Add_Min-Dist_to_In-Lines_Stats_to_Results-n-Options_v190802.ijm";
 	saveSettings(); /* To restore settings at the end */
 	snapshot();
 	/*   ('.')  ('.')   Black objects on white background settings   ('.')   ('.')   */	
@@ -29,6 +31,7 @@
 	ROIs = checkForRoiManager();
 	Dialog.create("Options for Min-Dist_Rings_Stats_Table_and_Add_to_Results macro");
 	Dialog.addRadioButtonGroup("Direction of minimum distance search:", newArray("Inwards", "Outwards", "Both"),1,2,"Outwards");
+	Dialog.addMessage("This macro version: " + macroL);
 	Dialog.addMessage("This macro uses images that are rings to provide inner and outer object locations for the\ndistance measurements.");
 	Dialog.addMessage("Skipping origin pixels can greatly speed up this macro for very large images.\nTo retain resolution, only the \"from\" x and y pixels will be advanced\nwhereas the \"to\" pixels will be retained for accuracy.\nNote: Both x and y are advanced so a setting of 1 results in 1/4 points.");
 	Dialog.addNumber("Number of origin pixels to skip", 0);
@@ -158,7 +161,7 @@
 			for (t=0 ; t<toCoords[i]; t++) {
 				X2 = toXpoints[t];
 				Y2 = toYpoints[t];
-				D = sqrt((X1-X2)*(X1-X2)+(Y1-Y2)*(Y1-Y2));
+				D = sqrt(pow(X1-X2,2)+pow(Y1-Y2,2));
 				if (minDist[f]>D) {
 					minDist[f] = D;  /* using this loop is very slightly faster than using array statistics */
 					minIndex = t;
@@ -217,7 +220,7 @@
 				for (f=0; f<fromCoords[i]; f++) {
 					X2 = fromXpoints[f];
 					Y2 = fromYpoints[f];
-					D = sqrt((X1-X2)*(X1-X2)+(Y1-Y2)*(Y1-Y2));
+					D = sqrt(pow(X1-X2,2)+pow(Y1-Y2,2));
 					if (minDist[t]>D) {
 						minDist[t] = D;  /* using this loop is very slightly faster than using array statistics */
 						minIndex = f;
@@ -363,7 +366,7 @@
 	/* End of Macro Ring version of min-dist macro */
 	
    	function getBar(p1, p2) {
-		/* from https://wsr.imagej.net//macros/ProgressBar.txt */
+		/* from https://imagej.nih.gov/ij//macros/ProgressBar.txt */
         n = 20;
         bar1 = "--------------------";
         bar2 = "********************";
@@ -375,22 +378,25 @@
 	/*
 		( 8(|)	( 8(|)	ASC Functions	@@@@@:-)	@@@@@:-)
 	*/
-		function binaryCheck(windowTitle) { /* For black objects on a white background */
-		/* v180601 added choice to invert or not */
-		/* v180907 added choice to revert to the true LUT, changed border pixel check to array stats */
-		/* v180925 added window titles to Booleans */
+	function binaryCheck(windowTitle) { /* For black objects on a white background */
+		/* v180601 added choice to invert or not 
+		v180907 added choice to revert to the true LUT, changed border pixel check to array stats
+		v190725 Changed to make binary
+		Requires function: restoreExit
+		*/
 		selectWindow(windowTitle);
-		if (is("binary")==0) run("8-bit");
+		if (!is("binary")) run("8-bit");
 		/* Quick-n-dirty threshold if not previously thresholded */
 		getThreshold(t1,t2); 
 		if (t1==-1)  {
 			run("8-bit");
 			run("Auto Threshold", "method=Default");
-			run("Convert to Mask");
+			setOption("BlackBackground", false);
+			run("Make Binary");
 		}
-		if (is("Inverting LUT")==true)  {
-			trueLUT = getBoolean("The LUT of " + windowTitle + " appears to be inverted, do you want the true LUT?", "Yes Please", "No Thanks");
-			if (trueLUT==true) run("Invert LUT");
+		if (is("Inverting LUT"))  {
+			trueLUT = getBoolean("The LUT appears to be inverted, do you want the true LUT?", "Yes Please", "No Thanks");
+			if (trueLUT) run("Invert LUT");
 		}
 		/* Make sure black objects on white background for consistency */
 		cornerPixels = newArray(getPixel(0, 0), getPixel(0, 1), getPixel(1, 0), getPixel(1, 1));
@@ -399,8 +405,8 @@
 		/*	Sometimes the outline procedure will leave a pixel border around the outside - this next step checks for this.
 			i.e. the corner 4 pixels should now be all black, if not, we have a "border issue". */
 		if (cornerMean==0) {
-			inversion = getBoolean("The background of " + windowTitle + " appears to have intensity zero, do you want the intensities inverted?", "Yes Please", "No Thanks");
-			if (inversion==true) run("Invert"); 
+			inversion = getBoolean("The background appears to have intensity zero, do you want the intensities inverted?", "Yes Please", "No Thanks");
+			if (inversion) run("Invert"); 
 		}
 	}
 	function checkForOutlierAreas() {
@@ -484,13 +490,14 @@
 		wait(waitTime);
 	}
 	function restoreExit(message){ /* Make a clean exit from a macro, restoring previous settings */
-		/* 9/9/2017 added Garbage clean up suggested by Luc LaLonde - LBNL */
+		/* v200305 1st version using memFlush function */
 		restoreSettings(); /* Restore previous settings before exiting */
 		setBatchMode("exit & display"); /* Probably not necessary if exiting gracefully but otherwise harmless */
-		run("Collect Garbage"); 
+		memFlush(200);
 		exit(message);
-	}
+	}	
 	function saveExcelFile(outputDir, outputName, outputResultsTable) {
+	/* v190116 corrected typo in resultsPath */
 		selectWindow(outputResultsTable);
 		resultsPath = outputDir + outputName + "_" + outputResultsTable + "_" + getDateCode() + ".csv"; /* CSV behaves better with Excel 2016 than XLS */
 		if (File.exists(resultsPath)==0)
@@ -499,5 +506,5 @@
 			overWriteFile=getBoolean("Do you want to overwrite " + resultsPath + "?");
 			if(overWriteFile==1)
 					saveAs("Results", resultsPath);
-		}
+		}		
 	}
