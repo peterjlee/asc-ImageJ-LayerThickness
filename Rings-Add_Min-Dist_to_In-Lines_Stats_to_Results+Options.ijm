@@ -8,7 +8,7 @@
 	v211029 Updated functions to latest versions
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
-	mscroL = "Rings-Add_Min-Dist_to_In-Lines_Stats_to_Results-n-Options_v190802.ijm";
+	macroL = "Rings-Add_Min-Dist_to_In-Lines_Stats_to_Results-n-Options_v211029-f1.ijm";
 	saveSettings(); /* To restore settings at the end */
 	snapshot();
 	/*   ('.')  ('.')   Black objects on white background settings   ('.')   ('.')   */	
@@ -29,20 +29,18 @@
 	dirOuterObjects = getDirectory("image");
 	binaryCheck(titleOuterObjects);
 	ROIs = checkForRoiManager();
-	Dialog.create("Options for Min-Dist_Rings_Stats_Table_and_Add_to_Results macro");
-	Dialog.addRadioButtonGroup("Direction of minimum distance search:", newArray("Inwards", "Outwards", "Both"),1,2,"Outwards");
-	Dialog.addMessage("This macro version: " + macroL);
-	Dialog.addMessage("This macro uses images that are rings to provide inner and outer object locations for the\ndistance measurements.");
-	Dialog.addMessage("Skipping origin pixels can greatly speed up this macro for very large images.\nTo retain resolution, only the \"from\" x and y pixels will be advanced\nwhereas the \"to\" pixels will be retained for accuracy.\nNote: Both x and y are advanced so a setting of 1 results in 1/4 points.");
-	Dialog.addNumber("Number of origin pixels to skip", 0);
-	Dialog.addCheckbox("Do you want to include all x and y coordinates in the Distance Table?", true);
-	Dialog.addCheckbox("Do you want to also output all minimum distances and coordinates in one 5 column table for use in the line color coder macro?", false);
-								
+	Dialog.create("Options for: " + macroL);
+		Dialog.addRadioButtonGroup("Direction of minimum distance search:", newArray("Inwards", "Outwards", "Both"),1,2,"Outwards");
+		Dialog.addMessage("This macro uses images that are rings to provide inner and outer object locations for the\ndistance measurements.");
+		Dialog.addMessage("Skipping origin pixels can greatly speed up this macro for very large images.\nTo retain resolution, only the \"from\" x and y pixels will be advanced\nwhereas the \"to\" pixels will be retained for accuracy.\nNote: Both x and y are advanced so a setting of 1 results in 1/4 points.");
+		Dialog.addNumber("Number of origin pixels to skip", 0);
+		Dialog.addCheckbox("Do you want to include all x and y coordinates in the Distance Table?", true);
+		Dialog.addCheckbox("Do you want to also output all minimum distances and coordinates in one 5 column table for use in the line color coder macro?", false);
 	Dialog.show();
-	direction = Dialog.getRadioButton(); /* if (direction==true) distance direction will be inwards */
-	pxAdv = Dialog.getNumber()+1; /* add 1 so that it can be used directly in the loop incrementals */
-	saveCoords = Dialog.getCheckbox();
-	colorCoderTable = Dialog.getCheckbox();
+		direction = Dialog.getRadioButton(); /* if (direction==true) distance direction will be inwards */
+		pxAdv = Dialog.getNumber()+1; /* add 1 so that it can be used directly in the loop incrementals */
+		saveCoords = Dialog.getCheckbox();
+		colorCoderTable = Dialog.getCheckbox();
 	print("This macro adds Minimum Distances \(Inlines\) analysis to the Results Table.");
 	print("Macro: " + getInfo("macro.filepath"));
 	print("This macro adds Minimum Distances \(Inlines\) analysis to the Results Table.");
@@ -382,6 +380,7 @@
 		/* v180601 added choice to invert or not 
 		v180907 added choice to revert to the true LUT, changed border pixel check to array stats
 		v190725 Changed to make binary
+		v220701 Added additional corner coordinates
 		Requires function: restoreExit
 		*/
 		selectWindow(windowTitle);
@@ -399,12 +398,13 @@
 			if (trueLUT) run("Invert LUT");
 		}
 		/* Make sure black objects on white background for consistency */
-		cornerPixels = newArray(getPixel(0, 0), getPixel(0, 1), getPixel(1, 0), getPixel(1, 1));
+		yMax = Image.height-1;	xMax = Image.width-1;
+		cornerPixels = newArray(getPixel(0,0),getPixel(1,1),getPixel(0,yMax),getPixel(xMax,0),getPixel(xMax,yMax),getPixel(xMax-1,yMax-1));
 		Array.getStatistics(cornerPixels, cornerMin, cornerMax, cornerMean, cornerStdDev);
 		if (cornerMax!=cornerMin) restoreExit("Problem with image border: Different pixel intensities at corners");
 		/*	Sometimes the outline procedure will leave a pixel border around the outside - this next step checks for this.
 			i.e. the corner 4 pixels should now be all black, if not, we have a "border issue". */
-		if (cornerMean==0) {
+		if (cornerMean<1) {
 			inversion = getBoolean("The background appears to have intensity zero, do you want the intensities inverted?", "Yes Please", "No Thanks");
 			if (inversion) run("Invert"); 
 		}

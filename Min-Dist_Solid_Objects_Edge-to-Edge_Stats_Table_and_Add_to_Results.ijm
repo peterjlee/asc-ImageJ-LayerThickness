@@ -13,14 +13,13 @@
 	v180924-5 Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact
 	v180928 Removed some redundant code.
 	v180928b Only ROIs are duplicated for pixel acquisition. v190325 minor tweaks to syntax.
-	v211029 Updated functions
+	v211029-f1 Updated functions
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
-	macroL = "Min-Dist_Solid_Objects_Edge-to-Edge_Stats_Table_and_Add_to_Results_v211029.ijm";
+	macroL = "Min-Dist_Solid_Objects_Edge-to-Edge_Stats_Table_and_Add_to_Results_v211029-f1.ijm";
 	run("Collect Garbage");
 	saveSettings(); /* To restore settings at the end */
 	snapshot();
-		
 	/*   ('.')  ('.')   Black objects on white background settings   ('.')   ('.')   */	
 	/* Set options for black objects on white background as this works better for publications */
 	run("Options...", "iterations=1 white count=1"); /* Set the background to white */
@@ -461,31 +460,36 @@
 		( 8(|)	( 8(|)	ASC Functions	@@@@@:-)	@@@@@:-)
 	*/
 	function binaryCheck(windowTitle) { /* For black objects on a white background */
-		/* v180601 added choice to invert or not */
-		/* v180907 added choice to revert to the true LUT, changed border pixel check to array stats */
-		/* v180925 added window titles to Booleans */
+		/* v180601 added choice to invert or not 
+		v180907 added choice to revert to the true LUT, changed border pixel check to array stats
+		v190725 Changed to make binary
+		v220701 Added additional corner coordinates
+		Requires function: restoreExit
+		*/
 		selectWindow(windowTitle);
-		if (is("binary")==0) run("8-bit");
+		if (!is("binary")) run("8-bit");
 		/* Quick-n-dirty threshold if not previously thresholded */
 		getThreshold(t1,t2); 
 		if (t1==-1)  {
 			run("8-bit");
 			run("Auto Threshold", "method=Default");
-			run("Convert to Mask");
+			setOption("BlackBackground", false);
+			run("Make Binary");
 		}
-		if (is("Inverting LUT")==true)  {
-			trueLUT = getBoolean("The LUT of " + windowTitle + " appears to be inverted, do you want the true LUT?", "Yes Please", "No Thanks");
-			if (trueLUT==true) run("Invert LUT");
+		if (is("Inverting LUT"))  {
+			trueLUT = getBoolean("The LUT appears to be inverted, do you want the true LUT?", "Yes Please", "No Thanks");
+			if (trueLUT) run("Invert LUT");
 		}
 		/* Make sure black objects on white background for consistency */
-		cornerPixels = newArray(getPixel(0, 0), getPixel(0, 1), getPixel(1, 0), getPixel(1, 1));
+		yMax = Image.height-1;	xMax = Image.width-1;
+		cornerPixels = newArray(getPixel(0,0),getPixel(1,1),getPixel(0,yMax),getPixel(xMax,0),getPixel(xMax,yMax),getPixel(xMax-1,yMax-1));
 		Array.getStatistics(cornerPixels, cornerMin, cornerMax, cornerMean, cornerStdDev);
 		if (cornerMax!=cornerMin) restoreExit("Problem with image border: Different pixel intensities at corners");
 		/*	Sometimes the outline procedure will leave a pixel border around the outside - this next step checks for this.
 			i.e. the corner 4 pixels should now be all black, if not, we have a "border issue". */
-		if (cornerMean==0) {
-			inversion = getBoolean("The background of " + windowTitle + " appears to have intensity zero, do you want the intensities inverted?", "Yes Please", "No Thanks");
-			if (inversion==true) run("Invert"); 
+		if (cornerMean<1) {
+			inversion = getBoolean("The background appears to have intensity zero, do you want the intensities inverted?", "Yes Please", "No Thanks");
+			if (inversion) run("Invert"); 
 		}
 	}
 	function checkForOutlierAreas() {
@@ -561,7 +565,6 @@
 		return dateCodeUS;
 	}
 	function memFlush(waitTime) {
-		
 		run("Reset...", "reset=[Undo Buffer]"); 
 		wait(waitTime);
 		run("Reset...", "reset=[Locked Image]"); 
