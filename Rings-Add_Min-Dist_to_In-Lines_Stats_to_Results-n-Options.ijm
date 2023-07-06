@@ -5,10 +5,11 @@
 	8/23/2017 Removed a label function that was not working beyond 255 object noticed by Ian Pong and Luc LaLonde at LBNL
 	9/9/2017 Added garbage clean up as suggested by Luc LaLonde at LBNL.
 	v180911-v181002 Major reworking to leverage use of new Table functions resulting in a 93%  reduction in run time. Added option to output coordinates and distances in table suitable for the line color coder macro. Added option to analyze both directions. Added a few minor tweaks. Added a variety of memory flushes but with little impact. Removed some redundant code.Only ROIs are duplicated for pixel acquisition. v190325 minor tweaks to syntax.
-	v211029 Updated functions to latest versions
+	v211029: Updated functions to latest versions.
+	v230706: Fixed boolean error.
 */
 	requires("1.52a"); /* This version uses Table functions, added in ImageJ 1.52a */
-	macroL = "Rings-Add_Min-Dist_to_In-Lines_Stats_to_Results-n-Options_v211029-f1.ijm";
+	macroL = "Rings-Add_Min-Dist_to_In-Lines_Stats_to_Results-n-Options_v230706.ijm";
 	saveSettings(); /* To restore settings at the end */
 	snapshot();
 	/*   ('.')  ('.')   Black objects on white background settings   ('.')   ('.')   */	
@@ -100,7 +101,7 @@
 		selectWindow("HoleInLines");
 		roiManager("select", i);
 		Roi.getBounds(ROIx, ROIy, Rwidth, Rheight);
-		if ((Rwidth&&Rheight)==1) {
+		if (Rwidth==1 && Rheight==1) {
 			continue = getBoolean("ROI #" + i + " is an isolated pixel: Do you want to continue?");
 			if (!continue) restoreExit("Goodbye");
 		}
